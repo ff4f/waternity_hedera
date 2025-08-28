@@ -1,0 +1,81 @@
+{
+  "wellId": "WL-001",
+  "name": "Ngong Hills Well",
+  "location": {
+    "lat": -1.2921,
+    "lng": 36.8219,
+    "address": "Ngong Hills, Kenya"
+  },
+  "operator": "Ngong Hills Water Co-op",
+  "projectType": "well",
+  "capexTarget": 12000,
+  "tariff": 0.0008,
+  "forecastLitersDay": 5200,
+  "split": {
+    "inv": 0.4,
+    "op": 0.5,
+    "plat": 0.1
+  },
+  "topics": {
+    "build": "0.0.8801",
+    "meter": "0.0.8802",
+    "settlement": "0.0.8803",
+    "audit": "0.0.8804"
+  },
+  "documents": [
+    {
+      "id": "DOC-001",
+      "name": "Environmental Impact Assessment",
+      "type": "permit",
+      "size": "2.4 MB",
+      "date": "2024-01-08",
+      "ipfsCid": "bafkreihf7dbh4txyhmwvjlqzocfwqmwogfjhcyzcrzzpomzgnmkuwakqea"
+    },
+    {
+      "id": "DOC-002",
+      "name": "Construction Blueprint",
+      "type": "technical",
+      "size": "5.1 MB",
+      "date": "2024-01-10",
+      "ipfsCid": "bafkreic3x7ydhk2z3jf7qp5y4zmuhf4k5xd2u3a8kf8hdxhcvwyqsngsem"
+    },
+    {
+      "id": "DOC-003",
+      "name": "Water Quality Report",
+      "type": "compliance",
+      "size": "1.8 MB",
+      "date": "2024-01-12",
+      "ipfsCid": "bafkreid5lmpx8h2j4s8vbkr5nq2l8j3g2w3f5h4k6y4s8n3f6l2j9s8x1e"
+    }
+  ],
+  "compliance": {
+    "permits": ["ENV-001", "WATER-002", "BUILD-003"],
+    "certifications": ["ISO-14001", "UNICEF-WASH"],
+    "audits": [
+      {
+        "date": "2024-01-15",
+        "auditor": "EcoVerify Ltd",
+        "status": "passed",
+        "reportCid": "bafkreigzwhnfauhk3ltmw24h4f5j6w8s2l3k8r9p6c4x7e2q5v8n1b9m3s"
+      }
+    ]
+  },
+  "performance": {
+    "litersToDate": 15420,
+    "efficiency": 94.7,
+    "uptime": 99.2,
+    "lastMaintenance": "2024-01-10"
+  },
+  "financial": {
+    "grossRevenue": 12.336,
+    "payoutInvestor": 4.9344,
+    "payoutOperator": 6.168,
+    "platformFee": 1.2336
+  },
+  "metadata": {
+    "manifestVersion": "1.0.0",
+    "createdAt": "2024-01-15T10:30:00Z",
+    "updatedAt": "2024-01-15T15:45:22Z",
+    "network": "hedera-testnet"
+  }
+}
