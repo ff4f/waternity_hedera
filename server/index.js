@@ -1,39 +1,75 @@
 /* eslint-disable no-console */
-const express = require("express");
-const cors = require("cors");
-// Removed body-parser in favor of built-in express.json()
-const { Client, TopicCreateTransaction, TopicMessageSubmitTransaction, Hbar, AccountId, PrivateKey, TokenCreateTransaction, TokenType, TokenSupplyType, TokenMintTransaction } = require("@hashgraph/sdk");
+const express = require('express');
+const cors = require('cors');
+const { WaternityService } = require('./lib/waternity-service');
+const { v4: uuidv4 } = require('uuid');
+const {
+  TopicMessageSubmitTransaction,
+  TokenCreateTransaction,
+  TokenMintTransaction,
+  TokenType,
+  TokenSupplyType,
+  AccountId,
+  PrivateKey,
+  Hbar
+} = require('@hashgraph/sdk');
 
+require('dotenv').config();
+
+const app = express();
 const PORT = process.env.PORT || 8787;
-const HEDERA_NET = process.env.HEDERA_NET || "testnet";
-const OPERATOR_ID = process.env.OPERATOR_ID;
-const OPERATOR_KEY = process.env.OPERATOR_KEY;
-const MIRROR_NODE = process.env.MIRROR_NODE || (HEDERA_NET === 'mainnet' ? 'https://mainnet-public.mirrornode.hedera.com' : 'https://testnet.mirrornode.hedera.com');
+const HEDERA_NET = process.env.HEDERA_NETWORK || 'testnet';
+const MIRROR_NODE = process.env.HEDERA_MIRROR_NODE || 'https://testnet.mirrornode.hedera.com';
+const OPERATOR_ID = process.env.HEDERA_OPERATOR_ID;
+const OPERATOR_KEY = process.env.HEDERA_OPERATOR_KEY;
 
-// P0-1: Multi-topic ENV
-const EVENTS_TOPIC_ID = process.env.EVENTS_TOPIC_ID || ""; // water.events (meter readings)
-const SETTLEMENTS_TOPIC_ID = process.env.SETTLEMENTS_TOPIC_ID || ""; // water.settlements
-const ANCHORS_TOPIC_ID = process.env.ANCHORS_TOPIC_ID || ""; // water.anchors
+// Initialize Waternity Service
+const waternityService = new WaternityService();
+
+// Legacy support - topic IDs from env
+const EVENTS_TOPIC_ID = process.env.EVENTS_TOPIC_ID;
+const SETTLEMENTS_TOPIC_ID = process.env.SETTLEMENTS_TOPIC_ID;
+const ANCHORS_TOPIC_ID = process.env.ANCHORS_TOPIC_ID;
 
 // Track last created/minted tokens (for audit links)
 let lastHTSTokenId = "";
 let lastHTSNftTokenId = "";
 const MANIFEST_URI = process.env.MANIFEST_URI || 
   "ipfs://bafybeigdyrhk7yxxwellswl001manifest/manifest.json";
-if (!OPERATOR_ID || !OPERATOR_KEY) {
-  console.warn("[WARN] Missing OPERATOR_ID/OPERATOR_KEY env. HCS/HTS actions will fail.");
-}
 
-const app = express();
 app.use(cors());
 app.use(express.json());
 
-function hederaClient() {
-  const client = Client.forName(HEDERA_NET);
-  if (OPERATOR_ID && OPERATOR_KEY) {
-    client.setOperator(AccountId.fromString(OPERATOR_ID), PrivateKey.fromString(OPERATOR_KEY));
+// Initialize service on startup
+let serviceInitialized = false;
+async function initializeService() {
+  if (serviceInitialized) return;
+  
+  try {
+    await waternityService.initialize({
+      eventsTopicId: EVENTS_TOPIC_ID,
+      settlementsTopicId: SETTLEMENTS_TOPIC_ID,
+      anchorsTopicId: ANCHORS_TOPIC_ID,
+      createTopics: !EVENTS_TOPIC_ID // Only create if not provided
+    });
+    serviceInitialized = true;
+    console.log('Waternity service initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize Waternity service:', error.message);
   }
-  return client;
+}
+
+// Middleware to ensure service is initialized
+const ensureInitialized = async (req, res, next) => {
+  if (!serviceInitialized) {
+    await initializeService();
+  }
+  next();
+};
+
+// Legacy Hedera client function for backward compatibility
+function hederaClient() {
+  return waternityService.client;
 }
 
 // In-memory recent events per topic (not persistent, demo only)
@@ -74,7 +110,222 @@ function normalizeEventMessage(msg) {
 const seeders = new Map(); // topicId -> interval
 
 // Routes
-app.get("/api/health", (_, res) => res.json({ ok: true }));
+// Health check
+app.get("/api/health", (req, res) => {
+  const status = waternityService.getSystemStatus();
+  res.json({ 
+    status: "ok", 
+    timestamp: new Date().toISOString(), 
+    ...status 
+  });
+});
+
+// =============================================================================
+// NEW WATERNITY API ENDPOINTS (OpenAPI 3.1 Spec)
+// =============================================================================
+
+// Projects
+app.post("/api/projects", ensureInitialized, async (req, res) => {
+  try {
+    const { messageId, ...projectData } = req.body;
+    const result = await waternityService.createProject(projectData, messageId);
+    res.json(result);
+  } catch (error) {
+    console.error('Create project error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/projects", ensureInitialized, (req, res) => {
+  try {
+    const projects = waternityService.getAllProjects();
+    res.json({ projects, count: projects.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/projects/:projectId", ensureInitialized, (req, res) => {
+  try {
+    const project = waternityService.getProject(req.params.projectId);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    res.json(project);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Investments
+app.post("/api/investments", ensureInitialized, async (req, res) => {
+  try {
+    const { messageId, ...investmentData } = req.body;
+    const result = await waternityService.makeInvestment(investmentData, messageId);
+    res.json(result);
+  } catch (error) {
+    console.error('Make investment error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Wells
+app.post("/api/wells", ensureInitialized, async (req, res) => {
+  try {
+    const { messageId, ...wellData } = req.body;
+    const result = await waternityService.createWell(wellData, messageId);
+    res.json(result);
+  } catch (error) {
+    console.error('Create well error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/wells", ensureInitialized, (req, res) => {
+  try {
+    const wells = waternityService.getAllWells();
+    res.json({ wells, count: wells.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/wells/:wellId", ensureInitialized, (req, res) => {
+  try {
+    const well = waternityService.getWell(req.params.wellId);
+    if (!well) {
+      return res.status(404).json({ error: 'Well not found' });
+    }
+    res.json(well);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Milestones
+app.post("/api/milestones", ensureInitialized, async (req, res) => {
+  try {
+    const { messageId, ...milestoneData } = req.body;
+    const result = await waternityService.createMilestone(milestoneData, messageId);
+    res.json(result);
+  } catch (error) {
+    console.error('Create milestone error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/milestones/:milestoneId/verify", ensureInitialized, async (req, res) => {
+  try {
+    const { messageId, ...verificationData } = req.body;
+    verificationData.milestoneId = req.params.milestoneId;
+    const result = await waternityService.verifyMilestone(verificationData, messageId);
+    res.json(result);
+  } catch (error) {
+    console.error('Verify milestone error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Water Usage
+app.post("/api/water-usage", ensureInitialized, async (req, res) => {
+  try {
+    const { messageId, ...usageData } = req.body;
+    const result = await waternityService.recordWaterUsage(usageData, messageId);
+    res.json(result);
+  } catch (error) {
+    console.error('Record water usage error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Settlements
+app.post("/api/settlements", ensureInitialized, async (req, res) => {
+  try {
+    const { messageId, ...settlementData } = req.body;
+    const result = await waternityService.processSettlement(settlementData, messageId);
+    res.json(result);
+  } catch (error) {
+    console.error('Process settlement error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Events
+app.get("/api/events", ensureInitialized, (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const events = waternityService.getRecentEvents(limit);
+    res.json({ events, count: events.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// System Status
+app.get("/api/system/status", ensureInitialized, (req, res) => {
+  try {
+    const status = waternityService.getSystemStatus();
+    res.json(status);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =============================================================================
+// DEVELOPMENT & DEMO ENDPOINTS
+// =============================================================================
+
+// Load seed data for demo
+app.post("/api/dev/seed", ensureInitialized, async (req, res) => {
+  try {
+    const seedData = require('./lib/seed-data');
+    const result = await seedData.loadSeedData(waternityService);
+    res.json(result);
+  } catch (error) {
+    console.error('Seed data loading error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get demo scenarios
+app.get("/api/dev/scenarios", (req, res) => {
+  try {
+    const { DEMO_SCENARIOS } = require('./lib/seed-data');
+    res.json({ scenarios: DEMO_SCENARIOS });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reset system (clear all data)
+app.post("/api/dev/reset", ensureInitialized, async (req, res) => {
+  try {
+    // Clear all in-memory data
+    waternityService.projects.clear();
+    waternityService.wells.clear();
+    waternityService.investments.clear();
+    waternityService.milestones.clear();
+    waternityService.settlements.clear();
+    
+    // Clear service buffers
+    if (waternityService.hcsEventService) {
+      waternityService.hcsEventService.clearBuffer();
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'System reset successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('System reset error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =============================================================================
+// LEGACY ENDPOINTS (for backward compatibility)
+// =============================================================================
 
 // Config expose
 app.get("/api/hcs/config", (req, res) => {
