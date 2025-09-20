@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HCS Settlement Executed Event Payload",
+  "type": "object",
+  "properties": {
+    "settlementId": { "type": "string" },
+    "paymentAsset": { "enum": ["HBAR", "TOKEN"] },
+    "tokenId": { "type": "string" },
+    "grossPaid": { "type": "number" }
+  },
+  "required": ["settlementId", "paymentAsset", "grossPaid"]
+}

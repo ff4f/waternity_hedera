@@ -6,6 +6,29 @@ import ProofPillComponent from '../../../components/ui/ProofPillComponent';
 
 const ActiveProjectsTab = ({ projects, onProjectSelect }) => {
   const [selectedTab, setSelectedTab] = useState('all');
+  const [metaLinks, setMetaLinks] = useState({});
+
+  useEffect(() => {
+    const fetchMetaLinks = async () => {
+      const links = {};
+      for (const project of mockProjects) {
+        if (project.id) {
+          try {
+            const res = await fetch(`/api/meta/links?wellId=${project.id}`);
+            if (res.ok) {
+              const data = await res.json();
+              links[project.id] = data;
+            }
+          } catch (error) {
+            console.error(`Failed to fetch meta links for ${project.id}`, error);
+          }
+        }
+      }
+      setMetaLinks(links);
+    };
+
+    fetchMetaLinks();
+  }, []);
 
   const mockProjects = [
     {
@@ -160,7 +183,8 @@ const ActiveProjectsTab = ({ projects, onProjectSelect }) => {
                   </div>
                   <div className="absolute top-3 right-3">
                     <ProofPillComponent
-                      transactionHash={project?.transactionHash}
+                      hashscanUrl={metaLinks[project.id]?.hashscanUrl}
+                      mirrorUrl={metaLinks[project.id]?.mirrorUrl}
                       status="verified"
                       size="sm"
                       onVerificationClick={() => {}}

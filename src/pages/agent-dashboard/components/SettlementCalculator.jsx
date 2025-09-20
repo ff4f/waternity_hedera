@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import ProofPillComponent from '../../../components/ui/ProofPillComponent';
+import { sendTransaction } from '../../../lib/wallet/connect';
+import { Transaction, AccountId } from '@hashgraph/sdk';
 
 const SettlementCalculator = () => {
   const [settlements, setSettlements] = useState([
@@ -51,37 +53,62 @@ const SettlementCalculator = () => {
 
   const processSettlement = async (settlementId) => {
     setIsProcessing(true);
-    
-    // Simulate settlement processing
-    setTimeout(() => {
-      const mockHashes = {
-        operator: '0x' + Math.random()?.toString(16)?.substr(2, 40),
-        investor: '0x' + Math.random()?.toString(16)?.substr(2, 40),
-        platform: '0x' + Math.random()?.toString(16)?.substr(2, 40)
-      };
 
-      setSettlements(prev => prev?.map(settlement => 
-        settlement?.id === settlementId 
-          ? { 
-              ...settlement, 
-              status: 'completed',
-              lastProcessed: new Date()?.toISOString(),
-              transactionHashes: mockHashes
-            }
-          : settlement
+    try {
+      // 1. Fetch settlement data from your backend
+      const response = await fetch('/api/settlement/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settlementId }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch settlement data');
+      }
+
+      const { distributionResult } = await response.json();
+      const { results } = distributionResult;
+
+      // 2. Process each transaction
+      const executedTransactions = [];
+      for (const result of results) {
+        const { transaction, accountId } = result;
+
+        // 3. Reconstruct and sign the transaction
+        const tx = Transaction.fromBytes(Buffer.from(transaction, 'base64'));
+        const txId = await sendTransaction(tx, AccountId.fromString(accountId));
+
+        executedTransactions.push({ account: accountId, txId });
+      }
+
+      // 4. Execute settlement
+      const executeResponse = await fetch('/api/settlement/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settlementId, executedTransactions }),
+      });
+
+      if (!executeResponse.ok) {
+        throw new Error('Failed to execute settlement');
+      }
+
+      const updatedSettlement = await executeResponse.json();
+
+      // 5. Update UI
+      setSettlements(prev => prev.map(settlement =>
+        settlement.id === settlementId ? updatedSettlement : settlement
       ));
 
       if (selectedSettlement?.id === settlementId) {
-        setSelectedSettlement(prev => ({
-          ...prev,
-          status: 'completed',
-          lastProcessed: new Date()?.toISOString(),
-          transactionHashes: mockHashes
-        }));
+        setSelectedSettlement(updatedSettlement);
       }
 
+    } catch (error) {
+      console.error("Settlement processing failed:", error);
+      // Optionally, update UI to show an error state
+    } finally {
       setIsProcessing(false);
-    }, 3000);
+    }
   };
 
   const getStatusColor = (status) => {

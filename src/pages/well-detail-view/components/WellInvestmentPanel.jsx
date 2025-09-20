@@ -9,6 +9,17 @@ const WellInvestmentPanel = ({ wellData, userRole = 'investor' }) => {
   const [isInvesting, setIsInvesting] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [projectedAPY, setProjectedAPY] = useState(0);
+  const [metaLinks, setMetaLinks] = useState({ hashscanUrl: '', mirrorUrl: '' });
+
+  useEffect(() => {
+    if (wellData?.id) {
+      fetch(`/api/meta/links?wellId=${wellData.id}`)
+        .then((res) => res.json())
+        .then((data) => {
+          setMetaLinks(data);
+        });
+    }
+  }, [wellData?.id]);
 
   const minInvestment = 100;
   const maxInvestment = 10000;
@@ -187,7 +198,8 @@ const WellInvestmentPanel = ({ wellData, userRole = 'investor' }) => {
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-muted-foreground">Blockchain Status</span>
             <ProofPillComponent 
-              transactionHash={wellData?.transactionHash || '0x742d35Cc6634C0532925a3b8D4C9db4C4b8b8b8b'}
+              hashscanUrl={metaLinks.hashscanUrl}
+              mirrorUrl={metaLinks.mirrorUrl}
               status="verified"
               size="sm"
               onVerificationClick={() => {}}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HCS Meter Reading Event Payload",
+  "type": "object",
+  "properties": {
+    "readingId": { "type": "string" },
+    "tsDevice": { "type": "string", "format": "date-time" },
+    "value": { "type": "number" },
+    "unit": { "enum": ["m3", "kWh"] },
+    "meterId": { "type": "string" }
+  },
+  "required": ["readingId", "tsDevice", "value", "unit", "meterId"]
+}

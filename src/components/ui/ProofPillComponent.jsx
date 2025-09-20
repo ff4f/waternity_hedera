@@ -3,7 +3,8 @@ import Icon from '../AppIcon';
 import Button from './Button';
 
 const ProofPillComponent = ({ 
-  transactionHash,
+  hashscanUrl,
+  mirrorUrl,
   status = 'verified',
   size = 'default',
   showDetails = false,
@@ -169,16 +170,30 @@ const ProofPillComponent = ({
             </div>
 
             <div className="flex space-x-2 pt-2 border-t border-border">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.open(`https://etherscan.io/tx/${transactionHash}`, '_blank')}
-                iconName="ExternalLink"
-                iconPosition="right"
-                className="flex-1"
-              >
-                View on HashScan
-              </Button>
+              {hashscanUrl && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(hashscanUrl, '_blank')}
+                  iconName="ExternalLink"
+                  iconPosition="right"
+                  className="flex-1"
+                >
+                  View on HashScan
+                </Button>
+              )}
+              {mirrorUrl && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(mirrorUrl, '_blank')}
+                  iconName="ExternalLink"
+                  iconPosition="right"
+                  className="flex-1"
+                >
+                  View on Mirror
+                </Button>
+              )}
             </div>
           </div>
         </div>

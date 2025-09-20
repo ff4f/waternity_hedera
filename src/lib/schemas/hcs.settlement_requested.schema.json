@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HCS Settlement Requested Event Payload",
+  "type": "object",
+  "properties": {
+    "settlementId": { "type": "string" },
+    "periodStart": { "type": "string", "format": "date-time" },
+    "periodEnd": { "type": "string", "format": "date-time" },
+    "kwhTotal": { "type": "number" },
+    "grossRevenue": { "type": "number" }
+  },
+  "required": ["settlementId", "periodStart", "periodEnd", "kwhTotal", "grossRevenue"]
+}

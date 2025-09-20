@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HCS Valve Command Event Payload",
+  "type": "object",
+  "properties": {
+    "commandId": { "type": "string" },
+    "action": { "enum": ["OPEN", "CLOSE"] },
+    "reason": { "type": "string" },
+    "requestedBy": { "type": "string" }
+  },
+  "required": ["commandId", "action", "reason", "requestedBy"]
+}

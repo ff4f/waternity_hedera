@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { usePathname, useRouter } from 'next/navigation';
 import Icon from '../AppIcon';
 import Button from './Button';
 
 const SidebarLayout = ({ items = [], children, title }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const location = useLocation();
-  const navigate = useNavigate();
+  const pathname = usePathname();
+  const router = useRouter();
 
-  const isActive = (path) => location?.pathname === path;
+  const isActive = (path) => pathname === path;
 
   const handleNav = (path) => {
-    navigate(path);
+    router.push(path);
     setMobileOpen(false);
   };
 

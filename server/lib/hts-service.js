@@ -1,4 +1,5 @@
 const { HTSService, generateHashScanLink, HEDERA_NET } = require('./hedera-client');
+const { Transaction, AccountId, TransactionId } = require('@hashgraph/sdk');
 const { v4: uuidv4 } = require('uuid');
 
 /**
@@ -100,6 +101,8 @@ class WaternityHTSService {
         name: wellToken.name,
         description: `Physical water well asset tokenized on Hedera`,
         image: metadata.image || 'https://waternity.io/assets/well-default.jpg',
+        type: 'image/jpeg',
+        format: 'HIP412@2.0.0',
         attributes: [
           { trait_type: 'Well ID', value: wellId },
           { trait_type: 'Location', value: wellToken.location?.address || 'Unknown' },
@@ -313,22 +316,19 @@ class WaternityHTSService {
         const { accountId, amount, percentage, tokenAmount } = dist;
         
         try {
-          // Transfer revenue tokens (representing revenue share)
-          const transferResult = await this.htsService.transferToken(
-            revenueToken.tokenId,
-            this.htsService.operatorId.toString(), // From treasury
-            accountId, // To investor/operator
-            tokenAmount
-          );
-          
+          // Prepare transaction for client-side signing
+          const transaction = new Transaction()
+            .setTransactionId(TransactionId.generate(this.htsService.operatorId))
+            .setNodeAccountIds([new AccountId(3)])
+            .addHbarTransfer(this.htsService.operatorId, -amount)
+            .addHbarTransfer(accountId, amount);
+
           results.push({
             accountId,
             amount,
             percentage,
             tokenAmount,
-            txId: transferResult.txId,
-            status: transferResult.status,
-            hashScanLink: generateHashScanLink(HEDERA_NET, 'transaction', transferResult.txId)
+            transaction: transaction.toString() // Serialize transaction for client
           });
         } catch (error) {
           results.push({

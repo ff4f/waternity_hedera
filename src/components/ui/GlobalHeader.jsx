@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { usePathname, useRouter } from 'next/navigation';
 import Icon from '../AppIcon';
 import Button from './Button';
 import RoleBadge from './RoleBadge';
@@ -9,10 +9,10 @@ import { useWalletContext } from '../../lib/wallet-context';
 const GlobalHeader = ({ isAuthenticated = false, userRole = null, onRoleChange }) => {
   const { wallet } = useWalletContext?.() || { wallet: { connected: false, accountId: '', state: 'Disconnected' } };
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const location = useLocation();
-  const navigate = useNavigate();
+  const pathname = usePathname();
+  const router = useRouter();
 
-  const isLandingPage = location?.pathname === '/landing-page' || location?.pathname === '/';
+  const isLandingPage = pathname === '/landing-page' || pathname === '/';
   
   // Get role from wallet if not explicitly provided
   const effectiveRole = userRole || (wallet?.accountId ? getRoleByWallet(wallet.accountId) : 'investor');
@@ -50,7 +50,7 @@ const GlobalHeader = ({ isAuthenticated = false, userRole = null, onRoleChange }
     if (onRoleChange) {
       onRoleChange(roleId);
     }
-    navigate(path);
+    router.push(path);
     setIsMobileMenuOpen(false);
   };
 
@@ -59,12 +59,12 @@ const GlobalHeader = ({ isAuthenticated = false, userRole = null, onRoleChange }
       // Navigate to appropriate dashboard based on user role
       const currentRole = roleNavigation?.find(role => role?.id === userRole);
       if (currentRole) {
-        navigate(currentRole?.path);
+        router.push(currentRole?.path);
       } else {
-        navigate('/investor-dashboard'); // Default fallback
+        router.push('/investor-dashboard'); // Default fallback
       }
     } else {
-      navigate('/landing-page');
+      router.push('/landing-page');
     }
   };
 
@@ -100,7 +100,7 @@ const GlobalHeader = ({ isAuthenticated = false, userRole = null, onRoleChange }
           {isAuthenticated && !isLandingPage && (
             <nav className="hidden md:flex items-center space-x-1">
               {filteredNavigation?.map((role) => {
-                const isActive = location?.pathname === role?.path;
+                const isActive = pathname === role?.path;
                 return (
                   <button
                     key={role?.id}
@@ -126,10 +126,10 @@ const GlobalHeader = ({ isAuthenticated = false, userRole = null, onRoleChange }
           <div className="hidden md:flex items-center space-x-3">
             {isLandingPage ? (
               <div className="flex items-center space-x-3">
-                <Button variant="ghost" onClick={() => navigate('/investor-dashboard')}>
+                <Button variant="ghost" onClick={() => router.push('/investor-dashboard')}>
                   Sign In
                 </Button>
-                <Button variant="default" onClick={() => navigate('/investor-dashboard')}>
+                <Button variant="default" onClick={() => router.push('/investor-dashboard')}>
                   Get Started
                 </Button>
               </div>
@@ -165,7 +165,7 @@ const GlobalHeader = ({ isAuthenticated = false, userRole = null, onRoleChange }
               {isAuthenticated && !isLandingPage ? (
                 <>
                   {filteredNavigation?.map((role) => {
-                    const isActive = location?.pathname === role?.path;
+                    const isActive = pathname === role?.path;
                     return (
                       <button
                         key={role?.id}
@@ -206,7 +206,7 @@ const GlobalHeader = ({ isAuthenticated = false, userRole = null, onRoleChange }
                     variant="ghost" 
                     fullWidth 
                     onClick={() => {
-                      navigate('/investor-dashboard');
+                      router.push('/investor-dashboard');
                       setIsMobileMenuOpen(false);
                     }}
                   >
@@ -216,7 +216,7 @@ const GlobalHeader = ({ isAuthenticated = false, userRole = null, onRoleChange }
                     variant="default" 
                     fullWidth
                     onClick={() => {
-                      navigate('/investor-dashboard');
+                      router.push('/investor-dashboard');
                       setIsMobileMenuOpen(false);
                     }}
                   >

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Hedera Consensus Service Common Event",
+  "description": "A common wrapper for all HCS events.",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "METER_READING",
+        "VALVE_COMMAND",
+        "DOC_ANCHORED",
+        "SETTLEMENT_REQUESTED",
+        "SETTLEMENT_APPROVED",
+        "SETTLEMENT_EXECUTED",
+        "TOKEN_MINTED",
+        "PAYOUT_DISTRIBUTED"
+      ]
+    },
+    "wellId": {
+      "type": "string"
+    },
+    "emittedBy": {
+      "type": "string",
+      "enum": [
+        "INVESTOR",
+        "OPERATOR",
+        "AGENT",
+        "SYSTEM"
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "messageId",
+    "type",
+    "wellId",
+    "emittedBy",
+    "version",
+    "payload"
+  ]
+}

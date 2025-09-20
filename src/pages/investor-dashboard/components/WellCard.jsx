@@ -1,127 +1,64 @@
-import React, { useState } from 'react';
-import Icon from '../../../components/AppIcon';
-import Image from '../../../components/AppImage';
-import Button from '../../../components/ui/Button';
-import ProofPillComponent from '../../../components/ui/ProofPillComponent';
+import React from 'react';
+import { Droplet, TrendingUp, Users, MapPin } from 'lucide-react';
 
-const WellCard = ({ well, onFundClick, onViewDetails }) => {
-  const [isHovered, setIsHovered] = useState(false);
+const WellCard = ({ well, onFund }) => {
+  const { name, location, totalValueLocked, avgApy, members } = well;
 
-  const getFundingPercentage = () => {
-    return Math.round((well?.currentFunding / well?.fundingGoal) * 100);
-  };
-
-  const getStatusColor = (status) => {
-    switch (status?.toLowerCase()) {
-      case 'funding':
-        return 'text-warning bg-warning/10';
-      case 'active':
-        return 'text-success bg-success/10';
-      case 'completed':
-        return 'text-primary bg-primary/10';
-      default:
-        return 'text-muted-foreground bg-muted';
-    }
+  const handleFundClick = (e) => {
+    e.stopPropagation();
+    onFund(well);
   };
 
   return (
-    <div 
-      className="bg-card border border-border rounded-lg overflow-hidden shadow-card hover:shadow-modal transition-smooth"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {/* Image Section */}
-      <div className="relative h-48 overflow-hidden">
-        <Image
-          src={well?.image}
-          alt={well?.name}
-          className="w-full h-full object-cover transition-smooth hover:scale-105"
-        />
-        <div className="absolute top-3 left-3">
-          <ProofPillComponent 
-            transactionHash={well?.transactionHash}
-            status="verified"
-            size="sm"
-            onVerificationClick={() => {}}
-          />
-        </div>
-        <div className="absolute top-3 right-3">
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(well?.status)}`}>
-            {well?.status}
-          </span>
-        </div>
-      </div>
-      {/* Content Section */}
+    <div className="bg-card border border-border rounded-lg overflow-hidden shadow-card hover:border-primary transition-all duration-300 cursor-pointer">
       <div className="p-6">
-        <div className="flex items-start justify-between mb-3">
+        <div className="flex items-start justify-between mb-4">
           <div>
-            <h3 className="text-lg font-semibold text-foreground mb-1">{well?.name}</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-1">{name}</h3>
             <div className="flex items-center text-sm text-muted-foreground">
-              <Icon name="MapPin" size={14} className="mr-1" />
-              <span>{well?.location}</span>
+              <MapPin size={14} className="mr-2" />
+              <span>{location}</span>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onViewDetails(well)}
-            className="opacity-0 group-hover:opacity-100 transition-smooth"
-          >
-            <Icon name="ExternalLink" size={16} />
-          </Button>
+          <span className="text-xs font-medium bg-primary/10 text-primary px-2 py-1 rounded-full">Active</span>
         </div>
 
-        {/* Key Metrics */}
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="text-center p-3 bg-muted/50 rounded-lg">
-            <div className="text-lg font-bold text-foreground">{well?.apy}</div>
-            <div className="text-xs text-muted-foreground">Expected APY</div>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-4 mb-6 text-sm">
+          <div className="flex items-center">
+            <div className="p-2 bg-primary/10 rounded-md mr-3">
+              <Droplet size={18} className="text-primary" />
+            </div>
+            <div>
+              <p className="text-muted-foreground">TVL</p>
+              <p className="font-semibold text-foreground">${totalValueLocked.toLocaleString()}</p>
+            </div>
           </div>
-          <div className="text-center p-3 bg-muted/50 rounded-lg">
-            <div className="text-lg font-bold text-foreground">{well?.beneficiaries}</div>
-            <div className="text-xs text-muted-foreground">Beneficiaries</div>
+          <div className="flex items-center">
+            <div className="p-2 bg-green-500/10 rounded-md mr-3">
+              <TrendingUp size={18} className="text-green-500" />
+            </div>
+            <div>
+              <p className="text-muted-foreground">Avg. APY</p>
+              <p className="font-semibold text-foreground">{avgApy}%</p>
+            </div>
           </div>
-        </div>
-
-        {/* Funding Progress */}
-        <div className="mb-4">
-          <div className="flex justify-between text-sm mb-2">
-            <span className="text-muted-foreground">Funding Progress</span>
-            <span className="text-foreground font-medium">{getFundingPercentage()}%</span>
-          </div>
-          <div className="w-full bg-muted rounded-full h-2 mb-2">
-            <div 
-              className="bg-primary h-2 rounded-full transition-all duration-300"
-              style={{ width: `${getFundingPercentage()}%` }}
-            ></div>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">${well?.currentFunding?.toLocaleString()}</span>
-            <span className="text-foreground font-medium">${well?.fundingGoal?.toLocaleString()}</span>
+          <div className="flex items-center">
+            <div className="p-2 bg-blue-500/10 rounded-md mr-3">
+              <Users size={18} className="text-blue-500" />
+            </div>
+            <div>
+              <p className="text-muted-foreground">Investors</p>
+              <p className="font-semibold text-foreground">{members}</p>
+            </div>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex space-x-3">
-          <Button
-            variant="default"
-            className="flex-1"
-            onClick={() => onFundClick(well)}
-            iconName="DollarSign"
-            iconPosition="left"
-            disabled={well?.status === 'completed'}
-          >
-            {well?.status === 'completed' ? 'Funded' : 'Fund Now'}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => onViewDetails(well)}
-            iconName="Eye"
-            iconPosition="left"
-          >
-            Details
-          </Button>
-        </div>
+        <button 
+          onClick={handleFundClick}
+          className="w-full bg-primary text-primary-foreground font-semibold py-2.5 rounded-lg hover:bg-primary/90 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary focus:ring-offset-background"
+        >
+          Fund Well
+        </button>
       </div>
     </div>
   );

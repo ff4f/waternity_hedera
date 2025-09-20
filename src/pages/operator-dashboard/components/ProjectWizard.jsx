@@ -138,11 +138,21 @@ const ProjectWizard = ({ onStepComplete, currentProject }) => {
         name: projectData?.name,
         description: projectData?.description,
         image: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=400',
+        type: 'image/jpeg',
+        format: 'HIP412@2.0.0',
         attributes: [
           { trait_type: 'Location', value: projectData?.location },
           { trait_type: 'CAPEX', value: `$${projectData?.capex}` },
           { trait_type: 'Target Communities', value: projectData?.targetCommunities }
-        ]
+        ],
+        properties: {
+          files: [
+            {
+              uri: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=1920',
+              type: 'image/jpeg'
+            }
+          ]
+        }
       }
     };
 

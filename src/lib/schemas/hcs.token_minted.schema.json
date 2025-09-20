@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HCS Token Minted Event Payload",
+  "type": "object",
+  "properties": {
+    "tokenId": { "type": "string" },
+    "type": { "enum": ["FT", "NFT"] },
+    "initialSupply": { "type": "integer" },
+    "treasury": { "type": "string" }
+  },
+  "required": ["tokenId", "type", "initialSupply", "treasury"]
+}

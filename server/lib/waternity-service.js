@@ -438,9 +438,9 @@ class WaternityService {
       settlementId,
       wellId,
       distributions: distributionResult?.distributions || [],
-      tokenTransfers: distributionResult?.distributions?.map(d => d.txId) || [],
+      tokenTransfers: distributionResult?.results?.map(d => d.transaction) || [],
       processedBy: settlement.processedBy,
-      hederaTransactions: distributionResult?.distributions || [],
+      hederaTransactions: distributionResult?.results?.map(d => d.transaction) || [],
       status: 'COMPLETED'
     });
 

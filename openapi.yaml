@@ -1,0 +1,104 @@
+openapi: 3.1.0
+info:
+  title: Waternity API
+  version: 1.0.0
+  description: API for Waternity, a platform for managing water well projects.
+servers:
+  - url: http://localhost:3000/api
+paths:
+  /hcs/events:
+    post:
+      summary: Submit a new HCS Event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HCSEvent'
+      responses:
+        '201':
+          description: Event submitted successfully
+  /wells:
+    get:
+      summary: Get a list of wells
+      responses:
+        '200':
+          description: A list of wells
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Well'
+  /wells/{id}/events:
+    get:
+      summary: Get events for a specific well
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A list of events for the well
+  /settlements/request:
+    post:
+      summary: Request a settlement
+      responses:
+        '200':
+          description: Settlement requested
+  /settlements/approve:
+    post:
+      summary: Approve a settlement
+      responses:
+        '200':
+          description: Settlement approved
+  /settlements/execute:
+    post:
+      summary: Execute a settlement
+      responses:
+        '200':
+          description: Settlement executed
+  /documents/anchor:
+    post:
+      summary: Anchor a document
+      responses:
+        '201':
+          description: Document anchored
+  /audit/reports:
+    get:
+      summary: Get audit reports
+      responses:
+        '200':
+          description: A list of audit reports
+  /meta/links:
+    get:
+      summary: Get meta links
+      responses:
+        '200':
+          description: A list of meta links
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: API is healthy
+components:
+  schemas:
+    Well:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+    HCSEvent:
+      type: object
+      properties:
+        type:
+          type: string
+        data:
+          type: object

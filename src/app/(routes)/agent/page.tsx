@@ -1,5 +1,7 @@
 import { Metadata } from 'next'
 import Link from 'next/link'
+import DocumentAnchorForm from '@/components/forms/DocumentAnchorForm'
+import SettlementWizard from '@/components/settlement/SettlementWizard'
 
 export const metadata: Metadata = {
   title: 'Agent Interface - Waternity',

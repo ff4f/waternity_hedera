@@ -1,5 +1,7 @@
 import { Metadata } from 'next'
 import Link from 'next/link'
+import MeterForm from '@/components/forms/MeterForm'
+import ValveForm from '@/components/forms/ValveForm'
 
 export const metadata: Metadata = {
   title: 'Operator Panel - Waternity',
