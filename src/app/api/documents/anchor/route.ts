@@ -1,61 +1,84 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import { bundleMonthlyReport } from '@/lib/hedera/hfs';
-import { createHederaClient } from '@/lib/hedera/client';
-import { eventEmitter } from '@/lib/events/emitter';
+import { createOrAppendFile } from '@/lib/hedera/hfs';
+import { submitMessage } from '@/lib/hedera/hcs';
+import { getOperator } from '@/lib/hedera/client';
+import { withSchema } from '@/lib/validator/withSchema';
+import { ensureIdempotent } from '@/lib/validator/idempotency';
 
-export async function POST(req: NextRequest) {
-  try {
-    const {
-      messageId,
-      wellId,
-      cid,
-      digestAlgo,
-      digestHex,
-      bundleContent,
-    } = await req.json();
 
-    if (!messageId || !wellId || !cid || !digestAlgo || !digestHex) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-    }
 
-    let hfsFileId: string | undefined;
+async function anchorDocumentHandler(req: NextRequest, context?: any) {
+  const body = (req as any).parsedBody;
+  const {
+    messageId,
+    wellId,
+    type,
+    cid,
+    digestAlgo,
+    digestHex,
+    bundleContentBase64
+  } = body;
 
-    if (bundleContent) {
-      const client = createHederaClient();
-      const contentBytes = Buffer.from(bundleContent, 'base64');
-      const { fileId } = await bundleMonthlyReport({ wellId, contentBytes, client });
-      hfsFileId = fileId;
-    }
+  const result = await ensureIdempotent(
+    messageId,
+    'documents_anchor',
+    async () => {
+      let hfsFileId: string | undefined;
 
-    const document = await prisma.document.create({
-      data: {
-        well: {
-          connect: {
-            id: wellId,
-          },
+      // If bundleContentBase64 present → encode to bytes and call createOrAppendFile → record hfsFileId
+      if (bundleContentBase64) {
+        const { client } = getOperator();
+        const contentBytes = Buffer.from(bundleContentBase64, 'base64');
+        const { fileId } = await createOrAppendFile(contentBytes, client);
+        hfsFileId = fileId;
+      }
+
+      // Create Document + Anchor DB rows
+       const document = await prisma.document.create({
+         data: {
+           well: {
+             connect: {
+               id: wellId,
+             },
+           },
+           type,
+           cid: cid || '',
+           hfsFileId,
+         },
+       });
+
+      const anchor = await prisma.anchor.create({
+        data: {
+          sourceType: 'DOCUMENT',
+          sourceId: document.id,
+          hcsEventId: messageId,
+          digestAlgo,
+          digestHex,
         },
-        type: 'MONTHLY_REPORT',
-        cid,
-        hfsFileId,
-      },
-    });
+      });
 
-    const anchor = await prisma.anchor.create({
-      data: {
-        sourceType: 'DOCUMENT',
-        sourceId: document.id,
-        hcsEventId: messageId,
-        digestAlgo,
-        digestHex,
-      },
-    });
+      // Emit DOC_ANCHORED via HCS with {documentId, cid, digestAlgo, digestHex, hfsFileId?}
+      await submitMessage(wellId, {
+        type: 'DOC_ANCHORED',
+        payload: {
+          documentId: document.id,
+          cid: cid || '',
+          digestAlgo,
+          digestHex,
+          hfsFileId
+        }
+      });
 
-    eventEmitter.emit('DOC_ANCHORED', { document, anchor });
+      return NextResponse.json({ 
+        documentId: document.id,
+        anchorId: anchor.id,
+        hfsFileId 
+      });
+    }
+  );
 
-    return NextResponse.json({ document, anchor });
-  } catch (error) {
-    console.error('Error anchoring document:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
+  return result.result || NextResponse.json({ error: "Operation failed" }, { status: 500 });
 }
+
+export const POST = withSchema('anchor_doc.schema.json', anchorDocumentHandler);

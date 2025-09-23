@@ -71,7 +71,11 @@ const Timeline: React.FC<TimelineProps> = ({ wellId }) => {
               <div>
                 <strong>Date:</strong> {new Date(event.consensusTime || event.createdAt).toLocaleString()}
               </div>
-              {event.transactionId && <ProofPill transactionId={event.transactionId} />}
+              {event.transactionId && (
+                <div className="text-xs text-gray-500 mt-1">
+                  <strong>Transaction ID:</strong> {event.transactionId}
+                </div>
+              )}
             </li>
           ))}
         </ul>

@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "wellId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ID of the well for water transaction"
+    },
+    "buyerAccountId": {
+      "type": "string",
+      "pattern": "^0\\.0\\.[0-9]+$",
+      "description": "Hedera account ID of the buyer"
+    },
+    "sellerAccountId": {
+      "type": "string",
+      "pattern": "^0\\.0\\.[0-9]+$",
+      "description": "Hedera account ID of the seller (optional, defaults to well operator)"
+    },
+    "waterAmount": {
+      "type": "number",
+      "minimum": 0.01,
+      "maximum": 1000000,
+      "description": "Amount of water in liters"
+    },
+    "pricePerLiter": {
+      "type": "number",
+      "minimum": 0.01,
+      "maximum": 1000,
+      "description": "Price per liter in HBAR or token units"
+    },
+    "paymentMethod": {
+      "type": "string",
+      "enum": ["TOKEN", "HBAR"],
+      "description": "Payment method for the transaction"
+    }
+  },
+  "required": ["wellId", "buyerAccountId", "waterAmount", "pricePerLiter"],
+  "additionalProperties": false
+}

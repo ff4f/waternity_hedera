@@ -2,21 +2,47 @@ import { prisma } from "@/lib/db/prisma";
 import { submitMessage } from "@/lib/hedera/hcs";
 import { SettlementState } from "@/lib/types";
 import { NextRequest, NextResponse } from "next/server";
+import { withSchema } from "@/lib/validator/withSchema";
+import { ensureIdempotent } from "@/lib/validator/idempotency";
 
-export async function POST(req: NextRequest) {
-  const { settlementId } = await req.json();
+async function settlementApproveHandler(req: NextRequest, context?: any) {
+  const body = (req as any).parsedBody;
+  const idempotencyKey = (req as any).idempotencyKey;
+  const { messageId, settlementId, approvedBy, approvalNotes, escrowTxId, timestamp } = body;
 
-  const settlement = await prisma.settlement.update({
-    where: { id: settlementId },
-    data: { status: SettlementState.APPROVED },
-  });
+  if (!idempotencyKey) {
+    return NextResponse.json(
+      { error: "Idempotency key is required" },
+      { status: 400 }
+    );
+  }
 
-  await submitMessage(settlement.wellId, {
-    type: "SETTLEMENT_APPROVED",
-    payload: {
-      settlementId: settlement.id,
-    },
-  });
+  const result = await ensureIdempotent(
+    idempotencyKey,
+    'settlement_approve',
+    async () => {
+      const settlement = await prisma.settlement.update({
+        where: { id: settlementId },
+        data: { status: SettlementState.APPROVED },
+      });
 
-  return NextResponse.json(settlement);
+      await submitMessage(settlement.wellId, {
+        type: "SETTLEMENT_APPROVED",
+        payload: {
+          settlementId: settlement.id,
+          messageId,
+          approvedBy,
+          approvalNotes,
+          escrowTxId,
+          timestamp,
+        },
+      });
+
+      return NextResponse.json(settlement);
+    }
+  );
+
+  return result.result || NextResponse.json({ error: "Operation failed" }, { status: 500 });
 }
+
+export const POST = withSchema('settlement_approve.schema.json', settlementApproveHandler);

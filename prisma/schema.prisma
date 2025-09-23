@@ -10,6 +10,8 @@ generator client {
 model User {
   id          String  @id @default(cuid())
   name        String
+  username    String  @unique
+  password    String
   accountId   String?
   walletEvm   String?
   role        String
@@ -33,6 +35,7 @@ model Well {
   documents   Document[]
   settlements Settlement[]
   tokens      Token[]
+  waterQuality WaterQuality[]
 
   @@index([topicId])
 }
@@ -51,20 +54,23 @@ model WellMembership {
 
 model HcsEvent {
   id              String      @id @default(cuid())
-  well            Well        @relation(fields: [wellId], references: [id])
-  wellId          String
+  well            Well?       @relation(fields: [wellId], references: [id])
+  wellId          String?
   type            String
   messageId       String      @unique
   consensusTime   DateTime?
   sequenceNumber  BigInt?
   txId            String?
   payloadJson     String
-  runningHash     String?
+  hash            String?     // Running hash from mirror node
   createdAt       DateTime    @default(now())
   anchors         Anchor[]
   documents       Document[]
+  waterQuality    WaterQuality[]
 
   @@index([wellId, consensusTime])
+  @@index([messageId])
+  @@index([consensusTime])
 }
 
 model Document {
@@ -83,17 +89,49 @@ model Settlement {
   id             String   @id @default(cuid())
   well           Well     @relation(fields: [wellId], references: [id])
   wellId         String
-  periodStart    DateTime
-  periodEnd      DateTime
-  kwhTotal       Float
-  grossRevenue   Float
-  status         String
+  // Energy settlement fields
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  kwhTotal       Float?
+  grossRevenue   Float?
   requestEventId  String?
   approvalEventId String?
   executeEventId  String?
   escrowTxId     String?
+  // Water settlement fields
+  buyerAccountId   String?
+  sellerAccountId  String?
+  waterAmount      Float?
+  pricePerLiter    Float?
+  totalPrice       Float?
+  paymentMethod    String?
+  transactionId    String?
+  // Common fields
+  status         String
   createdAt      DateTime @default(now())
   payouts        Payout[]
+}
+
+model WaterQuality {
+  id                 String   @id @default(cuid())
+  wellId             String
+  ph                 Float
+  turbidity          Float
+  tds                Float    // Total Dissolved Solids
+  temperature        Float
+  chlorine           Float
+  bacteria           Float
+  compliance         Boolean
+  testedBy           String
+  certificationBody  String?
+  hcsEventId         String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  well     Well     @relation(fields: [wellId], references: [id])
+  hcsEvent HcsEvent? @relation(fields: [hcsEventId], references: [id])
+
+  @@map("water_quality")
 }
 
 model Payout {
@@ -133,4 +171,18 @@ model Anchor {
   digestAlgo  String
   digestHex   String
   createdAt   DateTime @default(now())
+}
+
+model Idempotency {
+  id         String   @id @default(cuid())
+  key        String   // UUIDv4 from Idempotency-Key header or messageId from body
+  scope      String   // API endpoint scope (e.g., "hcs_events", "settlements", "documents_anchor")
+  status     String   // "processing", "completed", "failed"
+  result     String?  // JSON string of the result for completed operations
+  resultHash String?  // Hash of the result for completed operations
+  createdAt  DateTime @default(now())
+
+  @@unique([key, scope])
+  @@index([key])
+  @@index([createdAt])
 }

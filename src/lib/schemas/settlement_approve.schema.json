@@ -1,0 +1,43 @@
+{
+  "$id": "settlement_approve.schema.json",
+  "title": "Settlement Approval",
+  "description": "Schema for settlement approval requests",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique message identifier for idempotency"
+    },
+    "settlementId": {
+      "type": "string",
+      "description": "Settlement identifier to approve"
+    },
+    "approvedBy": {
+      "type": "string",
+      "pattern": "^0\\.0\\.[0-9]+$",
+      "description": "Account ID of the approver"
+    },
+    "approvalNotes": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Optional notes for the approval"
+    },
+    "escrowTxId": {
+      "type": "string",
+      "description": "Transaction ID for escrow setup"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the approval"
+    }
+  },
+  "required": [
+    "messageId",
+    "settlementId",
+    "approvedBy",
+    "timestamp"
+  ],
+  "additionalProperties": false
+}

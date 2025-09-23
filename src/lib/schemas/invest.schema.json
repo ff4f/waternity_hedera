@@ -1,0 +1,52 @@
+{
+  "$id": "invest.schema.json",
+  "title": "Investment Request",
+  "description": "Schema for project investment requests",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique message identifier for idempotency"
+    },
+    "investorAccount": {
+      "type": "string",
+      "pattern": "^0\\.0\\.[0-9]+$",
+      "description": "Hedera account ID of the investor"
+    },
+    "amount": {
+      "type": "number",
+      "minimum": 0.01,
+      "multipleOf": 0.01,
+      "description": "Investment amount in HBAR or USD"
+    },
+    "currency": {
+      "type": "string",
+      "enum": ["HBAR", "USD"],
+      "description": "Currency of the investment"
+    },
+    "tokenId": {
+      "type": "string",
+      "pattern": "^0\\.0\\.[0-9]+$",
+      "description": "Token ID for the investment shares"
+    },
+    "expectedShares": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Expected number of shares to receive"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the investment request"
+    }
+  },
+  "required": [
+    "messageId",
+    "investorAccount",
+    "amount",
+    "currency",
+    "timestamp"
+  ],
+  "additionalProperties": false
+}

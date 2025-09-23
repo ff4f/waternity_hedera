@@ -1,11 +1,24 @@
+'use client'
+
+import React, { useState } from 'react'
 import { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import InvestorsModal from '@/components/modals/InvestorsModal'
+import UploadDocumentModal from '@/components/modals/UploadDocumentModal'
 
 interface WellPageProps {
   params: {
     id: string
   }
+}
+
+export async function generateStaticParams() {
+  // Return the static paths for the wells
+  return [
+    { id: '1' },
+    { id: '2' }
+  ]
 }
 
 export async function generateMetadata({ params }: WellPageProps): Promise<Metadata> {
@@ -330,6 +343,8 @@ function getEventIcon(eventType: string): string {
 
 export default function WellDetailPage({ params }: WellPageProps) {
   const wellId = params.id
+  const [showInvestorsModal, setShowInvestorsModal] = useState(false)
+  const [showUploadModal, setShowUploadModal] = useState(false)
   const well = mockWellData[wellId as keyof typeof mockWellData]
   
   if (!well) {
@@ -624,7 +639,10 @@ export default function WellDetailPage({ params }: WellPageProps) {
                 ))}
               </div>
               <div className="mt-6">
-                <button className="w-full btn-secondary text-sm">
+                <button 
+                  className="w-full btn-secondary text-sm"
+                  onClick={() => setShowInvestorsModal(true)}
+                >
                   View All Investors
                 </button>
               </div>
@@ -639,7 +657,10 @@ export default function WellDetailPage({ params }: WellPageProps) {
           <div className="px-6 py-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-900">Documents</h2>
-              <button className="btn-primary text-sm">
+              <button 
+                className="btn-primary text-sm"
+                onClick={() => setShowUploadModal(true)}
+              >
                 Upload Document
               </button>
             </div>
@@ -673,6 +694,25 @@ export default function WellDetailPage({ params }: WellPageProps) {
           </div>
         </div>
       </div>
+
+      {/* Modals */}
+      <InvestorsModal 
+        isOpen={showInvestorsModal}
+        onClose={() => setShowInvestorsModal(false)}
+        wellName={well.name}
+        investors={well.investors}
+      />
+      
+      <UploadDocumentModal 
+        isOpen={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        wellName={well.name}
+        onUpload={(file, metadata) => {
+          console.log('Uploading file:', file.name, 'with metadata:', metadata)
+          // TODO: Implement actual file upload logic
+          alert(`Document "${metadata.name}" uploaded successfully!`)
+        }}
+      />
     </div>
   )
 }

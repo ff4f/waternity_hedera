@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { createMocks } from "node-mocks-http";
-import handler from "@/pages/api/hcs/events";
+import { POST as handler } from "@/app/api/hcs/events/route";
 import { prisma } from "@/lib/prisma";
 import { User, Well } from "@prisma/client";
 
@@ -22,7 +22,10 @@ describe("/api/hcs/events", () => {
     user = await prisma.user.create({
       data: {
         name: "Test User",
-        role: "admin",
+        username: `idempotency_test_${Date.now()}`,
+        password: "test_password_123",
+        walletEvm: "0.0.123456",
+        role: "USER",
       },
     });
 

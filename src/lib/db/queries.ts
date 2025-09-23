@@ -86,9 +86,26 @@ export async function getAuditReport(params: {
                 lte: periodEnd,
               },
             },
+            orderBy: {
+              consensusTime: 'asc',
+            },
+          },
+          documents: {
+            where: {
+              createdAt: {
+                gte: periodStart,
+                lte: periodEnd,
+              },
+            },
+            select: {
+              hfsFileId: true,
+            },
           },
         },
       },
+    },
+    orderBy: {
+      periodStart: 'asc',
     },
   });
 }

@@ -1,83 +1,154 @@
 import { NextResponse } from "next/server";
-import { prisma as db } from "@/lib/db/prisma";
-import { fetchTopicMessages } from "@/lib/hedera/mirror";
+import { prisma } from "@/lib/db/prisma";
+import { syncTopicMessages } from "@/lib/hedera/mirror";
+import { getNextSyncTimestamp, updateSyncCursor } from "@/lib/mirror/cursors";
+import { z } from "zod";
 
-export async function POST(req: Request) {
+const PullTopicSchema = z.object({
+  wellId: z.string().optional(),
+  topicId: z.string().optional(),
+  limit: z.number().int().positive().max(100).default(50),
+  forceSync: z.boolean().default(false)
+});
+
+export async function POST(request: Request) {
   try {
-    const { wellId } = await req.json();
+    const body = await request.json();
+    const { wellId, topicId, limit, forceSync } = PullTopicSchema.parse(body);
 
-    if (!wellId) {
-      return NextResponse.json({ error: "wellId is required" }, { status: 400 });
-    }
-
-    const well = await db.well.findUnique({ where: { id: wellId } });
-    if (!well || !well.topicId) {
+    // Validate that either wellId or topicId is provided
+    if (!wellId && !topicId) {
       return NextResponse.json(
-        { error: "Well or topic ID not found" },
-        { status: 404 }
+        { error: "Either wellId or topicId is required" },
+        { status: 400 }
       );
     }
 
-    // Find the latest consensus timestamp from local events
-    const lastEvent = await db.hcsEvent.findFirst({
-      where: { wellId },
-      orderBy: { consensusTime: "desc" },
-    });
+    let targetTopicId: string;
+    let targetWellId: string | null = null;
 
-    let fromTs = "0";
-    if (lastEvent?.consensusTime) {
-      // Add a small nanosecond to avoid fetching the same last message
-      const lastTs = lastEvent.consensusTime.getTime();
-      const seconds = Math.floor(lastTs / 1000);
-      const nanos = (lastTs % 1000) * 1000000 + 1;
-      fromTs = `${seconds}.${nanos.toString().padStart(9, "0")}`;
+    if (wellId) {
+      // Get topic ID from well
+      const well = await prisma.well.findUnique({
+        where: { id: wellId },
+        select: { id: true, topicId: true, name: true }
+      });
+
+      if (!well || !well.topicId) {
+        return NextResponse.json(
+          { error: "Well not found or has no topic ID" },
+          { status: 404 }
+        );
+      }
+
+      targetTopicId = well.topicId;
+      targetWellId = well.id;
+    } else {
+      // Use provided topic ID directly
+      targetTopicId = topicId!;
     }
 
-    const mirrorMessages = await fetchTopicMessages({
-      topicId: well.topicId,
-      fromTs,
-    });
+    // Get the next sync timestamp (cursor-based)
+    const fromTimestamp = forceSync ? "0" : await getNextSyncTimestamp(targetTopicId);
 
-    if (mirrorMessages.length > 0) {
-      const newEvents = mirrorMessages.map((msg) => {
-        let eventType = "unknown";
-        let payloadJson = msg.message;
-        try {
-          const payload = JSON.parse(msg.message);
-          if (payload && typeof payload.type === "string") {
-            eventType = payload.type;
-          }
-          payloadJson = JSON.stringify(payload);
-        } catch (e) {
-          // Not a JSON message, keep original
-        }
+    // Sync messages from mirror node
+    const syncResult = await syncTopicMessages(targetTopicId, fromTimestamp || "0", limit);
 
-        const [seconds, nanos] = msg.consensusTime.split(".").map(Number);
-        const consensusTime = new Date(seconds * 1000 + nanos / 1000000);
+    let newEventsCount = 0;
+    let updatedEventsCount = 0;
+
+    if (syncResult.messages.length > 0) {
+      // Process and upsert events
+      const eventData = syncResult.messages.map((msg) => {
+        const eventType = msg.payload?.type || 'UNKNOWN';
+        const payloadJson = JSON.stringify(msg.payload);
 
         return {
-          wellId,
+          ...(targetWellId && { wellId: targetWellId }),
           type: eventType,
-          messageId: msg.consensusTime, // Using consensusTime as a unique ID
-          consensusTime,
+          messageId: msg.messageId || `mirror-${msg.sequenceNumber}`,
+          consensusTime: new Date(msg.consensusTime),
           sequenceNumber: BigInt(msg.sequenceNumber),
-          runningHash: msg.runningHash,
-          payloadJson,
+          hash: msg.runningHash,
+          payloadJson
         };
       });
 
-      await db.hcsEvent.createMany({
-        data: newEvents,
-        skipDuplicates: true,
+      // Use transaction for atomic operations
+      await prisma.$transaction(async (tx) => {
+        for (const event of eventData) {
+          const result = await tx.hcsEvent.upsert({
+            where: {
+              messageId: event.messageId
+            },
+            update: {
+              type: event.type,
+              consensusTime: event.consensusTime,
+              sequenceNumber: event.sequenceNumber,
+              hash: event.hash,
+              payloadJson: event.payloadJson
+            },
+            create: event
+          });
+
+          // Count new vs updated events (simplified)
+          if (result.createdAt.getTime() === result.consensusTime?.getTime()) {
+            newEventsCount++;
+          } else {
+            updatedEventsCount++;
+          }
+        }
       });
+
+      // Update sync cursor with the latest consensus timestamp
+      if (syncResult.messages.length > 0) {
+        const latestMessage = syncResult.messages[syncResult.messages.length - 1];
+        await updateSyncCursor(targetTopicId, latestMessage.consensusTime);
+      }
     }
 
-    return NextResponse.json({ ok: true, pulled: mirrorMessages.length });
+    return NextResponse.json({
+      success: true,
+      data: {
+        topicId: targetTopicId,
+        wellId: targetWellId,
+        messagesFound: syncResult.messages.length,
+        newEvents: newEventsCount,
+        updatedEvents: updatedEventsCount,
+        hasMore: syncResult.hasMore,
+        fromTimestamp,
+        forceSync
+      }
+    });
+
   } catch (error) {
-    console.error("Failed to pull topic messages:", error);
+    console.error('Failed to pull topic messages:', error);
+    
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { 
+          error: 'Invalid request parameters',
+          details: error.errors
+        },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
+}
+
+// OPTIONS handler for CORS
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
 }

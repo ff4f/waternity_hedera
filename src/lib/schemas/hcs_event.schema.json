@@ -1,0 +1,69 @@
+{
+  "$id": "hcs_event.schema.json",
+  "title": "HCS Event",
+  "description": "Schema for Hedera Consensus Service event submissions",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique message identifier for idempotency"
+    },
+    "wellId": {
+      "type": "string",
+      "description": "Well identifier"
+    },
+    "topicId": {
+      "type": "string",
+      "pattern": "^0\\.0\\.[0-9]+$",
+      "description": "Hedera topic ID"
+    },
+    "eventType": {
+      "type": "string",
+      "enum": [
+        "METER_READING",
+        "VALVE_COMMAND",
+        "DOC_ANCHORED",
+        "SETTLEMENT_REQUESTED",
+        "SETTLEMENT_APPROVED",
+        "SETTLEMENT_EXECUTED",
+        "TOKEN_MINTED",
+        "PAYOUT_DISTRIBUTED"
+      ],
+      "description": "Type of HCS event"
+    },
+    "payload": {
+      "type": "object",
+      "description": "Event-specific payload data"
+    },
+    "submittedBy": {
+      "type": "string",
+      "pattern": "^0\\.0\\.[0-9]+$",
+      "description": "Account ID of the event submitter"
+    },
+    "submitKey": {
+      "type": "string",
+      "description": "Submit key for the topic (if required)"
+    },
+    "memo": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Optional memo for the HCS message"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the event submission"
+    }
+  },
+  "required": [
+    "messageId",
+    "wellId",
+    "topicId",
+    "eventType",
+    "payload",
+    "submittedBy",
+    "timestamp"
+  ],
+  "additionalProperties": false
+}

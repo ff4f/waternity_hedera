@@ -1,5 +1,4 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Hedera Consensus Service Common Event",
   "description": "A common wrapper for all HCS events.",
   "type": "object",

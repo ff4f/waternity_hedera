@@ -6,26 +6,30 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const wellId = searchParams.get('wellId');
-    const periodStart = searchParams.get('periodStart');
-    const periodEnd = searchParams.get('periodEnd');
+    const from = searchParams.get('from');
+    const to = searchParams.get('to');
     const format = searchParams.get('format') || 'json';
 
-    if (!wellId || !periodStart || !periodEnd) {
+    if (!wellId || !from || !to) {
       return NextResponse.json(
-        { error: 'Missing required query parameters: wellId, periodStart, periodEnd' },
+        { error: 'Missing required query parameters: wellId, from, to' },
         { status: 400 },
       );
     }
 
     const auditData = await getAuditReport({
       wellId,
-      periodStart: new Date(periodStart),
-      periodEnd: new Date(periodEnd),
+      periodStart: new Date(from),
+      periodEnd: new Date(to),
     });
 
     if (format === 'csv') {
-      const records = auditData.flatMap((settlement) => {
-        const settlementRecord = {
+      const records = auditData.flatMap((settlement: any) => {
+        // Get HCS events for this settlement period
+        const hcsEvents = settlement.well?.events || [];
+        const hfsFileIds = settlement.well?.documents?.map((doc: any) => doc.hfsFileId).filter(Boolean) || [];
+        
+        const baseRecord = {
           settlementId: settlement.id,
           wellId: settlement.wellId,
           periodStart: settlement.periodStart,
@@ -33,15 +37,23 @@ export async function GET(request: NextRequest) {
           kwhTotal: settlement.kwhTotal,
           grossRevenue: settlement.grossRevenue,
           status: settlement.status,
-          hashscanTopicUrl: `https://hashscan.io/mainnet/topic/${settlement.well.topicId}`,
-          mirrorTopicUrl: `https://mainnet-public.mirrornode.hedera.com/api/v1/topics/${settlement.well.topicId}/messages`,
-          tokenId: settlement.well.tokenId,
+          // Proof columns
+          consensusTime: hcsEvents[0]?.consensusTime || null,
+          sequenceNumber: hcsEvents[0]?.sequenceNumber || null,
+          txId: hcsEvents[0]?.txId || null,
+          topicId: settlement.well?.topicId,
+          tokenId: settlement.well?.tokenId,
+          hfsFileId: hfsFileIds[0] || null,
+          hashscanUrl: `https://hashscan.io/mainnet/topic/${settlement.well?.topicId}`,
+          mirrorUrl: `https://mainnet-public.mirrornode.hedera.com/api/v1/topics/${settlement.well?.topicId}/messages`,
         };
-        if (settlement.payouts.length === 0) {
-          return settlementRecord;
+        
+        if (!settlement.payouts || settlement.payouts.length === 0) {
+          return baseRecord;
         }
-        return settlement.payouts.map((payout) => ({
-          ...settlementRecord,
+        
+        return settlement.payouts.map((payout: any) => ({
+          ...baseRecord,
           payoutId: payout.id,
           recipientAccount: payout.recipientAccount,
           assetType: payout.assetType,
@@ -53,7 +65,14 @@ export async function GET(request: NextRequest) {
       });
 
       const csv = stringify(records, { header: true });
-      return new Response(csv, { headers: { 'Content-Type': 'text/csv' } });
+      const filename = `audit_${wellId}_${from}_${to}.csv`;
+      
+      return new Response(csv, { 
+        headers: { 
+          'Content-Type': 'text/csv',
+          'Content-Disposition': `attachment; filename="${filename}"`
+        } 
+      });
     } else {
       return NextResponse.json(auditData);
     }

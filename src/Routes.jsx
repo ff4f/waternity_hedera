@@ -1,16 +1,26 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { BrowserRouter, Routes as RouterRoutes, Route } from "react-router-dom";
 import ScrollToTop from "components/ScrollToTop";
 import ErrorBoundary from "components/ErrorBoundary";
-import NotFound from "pages/NotFound";
-import AgentDashboard from './pages/agent-dashboard';
-import OperatorDashboard from './pages/operator-dashboard';
-import LandingPage from './pages/landing-page';
-import InvestorDashboard from './pages/investor-dashboard';
-import WellDetailView from './pages/well-detail-view';
-import AuditPage from './pages/audit';
+import NotFound from "components/pages/NotFound";
+import AgentDashboard from './components/pages/agent-dashboard';
+import OperatorDashboard from './components/pages/operator-dashboard';
+import LandingPage from './components/pages/landing-page';
+import InvestorDashboard from './components/pages/investor-dashboard';
+import WellDetailView from './components/pages/well-detail-view';
+import AuditPage from './components/pages/audit';
 
 const Routes = () => {
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  if (!isClient) {
+    return <div>Loading...</div>;
+  }
+
   return (
     <BrowserRouter>
       <ErrorBoundary>

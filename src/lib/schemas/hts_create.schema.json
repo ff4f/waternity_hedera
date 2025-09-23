@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "wellId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ID of the well to create token for"
+    },
+    "tokenName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "description": "Name of the water token"
+    },
+    "tokenSymbol": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 10,
+      "pattern": "^[A-Z0-9]+$",
+      "description": "Symbol of the water token (uppercase alphanumeric)"
+    },
+    "initialSupply": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000000,
+      "description": "Initial supply of tokens to mint"
+    }
+  },
+  "required": ["wellId", "tokenName", "tokenSymbol"],
+  "additionalProperties": false
+}

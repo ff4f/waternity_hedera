@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createMocks } from 'node-mocks-http';
 import { prisma } from '@/lib/prisma';
-import requestHandler from '@/pages/api/settlements/request';
+import { POST as requestHandler } from '@/app/api/settlements/request/route';
 import approveHandler from '@/pages/api/settlements/[id]/approve';
 import executeHandler from '@/pages/api/settlements/[id]/execute';
 
@@ -27,7 +27,10 @@ describe('Settlement E2E', () => {
     user = await prisma.user.create({
       data: {
         name: 'Test User',
-        role: 'OPERATOR',
+        username: `settlement_test_${Date.now()}`,
+        password: 'test_password_123',
+        walletEvm: '0.0.123456',
+        role: 'USER',
       },
     });
 
@@ -42,7 +45,7 @@ describe('Settlement E2E', () => {
     });
 
     // Mock getSession
-    (getSession as vi.Mock).mockResolvedValue({
+    (getSession as any).mockResolvedValue({
       user: {
         role: 'OPERATOR',
       },
@@ -62,10 +65,10 @@ describe('Settlement E2E', () => {
       },
     });
 
-    await requestHandler(reqRequest, resRequest);
-    const settlement = JSON.parse(resRequest._getData());
+    const response = await requestHandler(reqRequest);
+    const settlement = await response.json();
 
-    expect(resRequest._getStatusCode()).toBe(201);
+    expect(response.status).toBe(200);
     expect(settlement.status).toBe('PENDING');
 
     // 2. Approve settlement

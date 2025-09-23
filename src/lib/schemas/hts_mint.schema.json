@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "wellId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ID of the well to mint tokens for"
+    },
+    "amount": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000000,
+      "description": "Amount of tokens to mint"
+    }
+  },
+  "required": ["wellId", "amount"],
+  "additionalProperties": false
+}

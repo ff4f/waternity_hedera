@@ -1,16 +1,77 @@
 version: '3.8'
+
 services:
-  db:
-    image: postgres:14.1-alpine
-    restart: always
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: waternity_postgres
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=waternity
+      POSTGRES_DB: waternity
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
     ports:
-      - '5432:5432'
+      - "5432:5432"
     volumes:
-      - db:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - waternity_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis for caching and sessions
+  redis:
+    image: redis:7-alpine
+    container_name: waternity_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - waternity_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Waternity Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: waternity_app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/waternity
+      - REDIS_URL=redis://redis:6379
+      - NEXTAUTH_SECRET=your-secret-key-here-change-in-production
+      - NEXTAUTH_URL=http://localhost:3000
+      - HEDERA_NETWORK=testnet
+      - HEDERA_ACCOUNT_ID=${HEDERA_ACCOUNT_ID}
+      - HEDERA_PRIVATE_KEY=${HEDERA_PRIVATE_KEY}
+      - HCS_TOPIC_ID=${HCS_TOPIC_ID}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - waternity_network
+    restart: unless-stopped
+    command: >
+      sh -c "npx prisma migrate deploy &&
+             npx prisma generate &&
+             node server.js"
+
 volumes:
-  db:
-    driver: local
+  postgres_data:
+  redis_data:
+
+networks:
+  waternity_network:
+    driver: bridge

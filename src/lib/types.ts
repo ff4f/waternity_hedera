@@ -7,4 +7,19 @@ export enum SettlementState {
   REJECTED = "REJECTED",
 }
 
+export enum Role {
+  INVESTOR = "INVESTOR",
+  OPERATOR = "OPERATOR", 
+  AGENT = "AGENT",
+  ADMIN = "ADMIN",
+}
+
+export interface AuthUser {
+  sub: string;
+  name: string;
+  role: Role;
+  iat: number;
+  exp: number;
+}
+
 export type { HcsEvent, Settlement, Payout, Well, WellMembership, User, Token, Document, Anchor };

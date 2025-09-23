@@ -1,0 +1,97 @@
+{
+  "$id": "anchor_doc.schema.json",
+  "title": "Document Anchor",
+  "description": "Schema for document anchoring requests",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique message identifier for idempotency"
+    },
+    "wellId": {
+      "type": "string",
+      "description": "Well identifier"
+    },
+    "documentType": {
+      "type": "string",
+      "enum": [
+        "METER_READING",
+        "MAINTENANCE_REPORT",
+        "INSPECTION_CERTIFICATE",
+        "FINANCIAL_STATEMENT",
+        "COMPLIANCE_DOCUMENT",
+        "OTHER"
+      ],
+      "description": "Type of document being anchored"
+    },
+    "cid": {
+      "type": "string",
+      "pattern": "^Qm[1-9A-HJ-NP-Za-km-z]{44}$|^bafy[a-z2-7]{55}$",
+      "description": "IPFS Content Identifier (CID)"
+    },
+    "hfsFileId": {
+      "type": "string",
+      "pattern": "^0\\.0\\.[0-9]+$",
+      "description": "Hedera File Service file ID (optional)"
+    },
+    "digestAlgo": {
+      "type": "string",
+      "enum": ["SHA256", "SHA3-256", "BLAKE2B"],
+      "description": "Hash algorithm used for document digest"
+    },
+    "digestHex": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{64}$",
+      "description": "Hexadecimal hash digest of the document"
+    },
+    "bundleContentBase64": {
+      "type": "string",
+      "description": "Base64 encoded content to be stored on HFS (optional)"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "filename": {
+          "type": "string",
+          "maxLength": 255,
+          "description": "Original filename"
+        },
+        "fileSize": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "File size in bytes"
+        },
+        "mimeType": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9!#$&\\-\\^_]*\/[a-zA-Z0-9][a-zA-Z0-9!#$&\\-\\^_.]*$",
+          "description": "MIME type of the document"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Document description"
+        }
+      },
+      "additionalProperties": false
+    },
+    "anchoredBy": {
+      "type": "string",
+      "pattern": "^0\\.0\\.[0-9]+$",
+      "description": "Account ID of the user anchoring the document"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the anchoring request"
+    }
+  },
+  "required": [
+    "messageId",
+    "wellId",
+    "type",
+    "digestAlgo",
+    "digestHex"
+  ],
+  "additionalProperties": false
+}

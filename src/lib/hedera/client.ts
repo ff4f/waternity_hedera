@@ -10,3 +10,8 @@ export function getOperator() {
 
   return { client, operatorAccountId, operatorPrivateKey };
 }
+
+export function createHederaClient(): Client {
+  const { client } = getOperator();
+  return client;
+}

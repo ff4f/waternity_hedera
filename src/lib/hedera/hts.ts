@@ -4,36 +4,45 @@ import {
   TokenCreateTransaction,
   TokenType,
   TransferTransaction,
+  Hbar,
 } from "@hashgraph/sdk";
 import { prisma } from "@/lib/db/prisma";
 import { getOperator } from "./client";
+import { env } from "@/lib/env";
 
 export async function ensureFtForWell(wellId: string) {
   const { client, operatorAccountId, operatorPrivateKey } = getOperator();
-  const token = await prisma.token.findFirst({ where: { wellId } });
-
-  if (token) {
-    return token;
+  
+  // Check if token already exists for this well
+  const existingToken = await prisma.token.findFirst({ where: { wellId } });
+  if (existingToken) {
+    return existingToken;
   }
 
+  // Get decimals from environment or use default
+  const decimals = process.env.TOKEN_DECIMALS ? parseInt(process.env.TOKEN_DECIMALS) : 6;
+  
+  // Create new fungible token for the well
   const tx = new TokenCreateTransaction()
     .setTokenName(`Waternity Well ${wellId}`)
     .setTokenSymbol("H2O")
     .setTokenType(TokenType.FungibleCommon)
-    .setDecimals(3)
+    .setDecimals(decimals)
     .setInitialSupply(0)
     .setTreasuryAccountId(operatorAccountId)
     .setAdminKey(operatorPrivateKey.publicKey)
-    .setSupplyKey(operatorPrivateKey.publicKey);
+    .setSupplyKey(operatorPrivateKey.publicKey)
+    .setFreezeDefault(false);
 
   const txResponse = await tx.execute(client);
   const receipt = await txResponse.getReceipt(client);
   const tokenId = receipt.tokenId;
 
   if (!tokenId) {
-    throw new Error("Token creation failed");
+    throw new Error("Token creation failed - no token ID returned");
   }
 
+  // Store token information in database
   const newToken = await prisma.token.create({
     data: {
       tokenId: tokenId.toString(),
@@ -42,7 +51,7 @@ export async function ensureFtForWell(wellId: string) {
       name: `Waternity Well ${wellId}`,
       symbol: "H2O",
       treasuryAccount: operatorAccountId.toString(),
-      decimals: 3,
+      decimals,
     },
   });
 
@@ -59,28 +68,58 @@ export async function transferPayouts({
   recipients: { account: string; amount: number }[];
 }) {
   const { client, operatorAccountId } = getOperator();
-  const tx = new TransferTransaction();
+  
+  if (recipients.length === 0) {
+    return [];
+  }
 
+  let txResponse;
+  
   if (assetType === "TOKEN") {
     if (!tokenId) {
       throw new Error("Token ID is required for token transfers");
     }
+    
+    // Use TransferTransaction for batching all token recipients
+    const tx = new TransferTransaction();
+    
+    // Calculate total amount to transfer from treasury
+    const totalAmount = recipients.reduce((sum, r) => sum + r.amount, 0);
+    
+    // Transfer from treasury to recipients
+    tx.addTokenTransfer(tokenId, operatorAccountId, -totalAmount);
+    
     for (const recipient of recipients) {
-      tx.addTokenTransfer(tokenId, recipient.account, recipient.amount);
+      if (recipient.amount > 0) {
+        tx.addTokenTransfer(tokenId, recipient.account, recipient.amount);
+      }
     }
-    // The treasury account must be involved in the transaction
-    tx.addTokenTransfer(tokenId, operatorAccountId, 0);
+    
+    txResponse = await tx.execute(client);
+    
   } else {
+    // Use CryptoTransferTransaction for HBAR - one transaction including all transfers
+    const tx = new TransferTransaction();
+    
+    // Calculate total amount to transfer from treasury
+    const totalAmount = recipients.reduce((sum, r) => sum + r.amount, 0);
+    
+    // Transfer from treasury to recipients
+    tx.addHbarTransfer(operatorAccountId, Hbar.fromTinybars(-totalAmount));
+    
     for (const recipient of recipients) {
-      tx.addHbarTransfer(recipient.account, recipient.amount);
+      if (recipient.amount > 0) {
+        tx.addHbarTransfer(recipient.account, Hbar.fromTinybars(recipient.amount));
+      }
     }
-    // The treasury account must be involved in the transaction
-    tx.addHbarTransfer(operatorAccountId, 0);
+    
+    txResponse = await tx.execute(client);
   }
 
-  const txResponse = await tx.execute(client);
+  // Wait for transaction to be processed
   await txResponse.getReceipt(client);
 
+  // Return transaction details for each recipient
   return recipients.map((r) => ({
     account: r.account,
     txId: txResponse.transactionId.toString(),

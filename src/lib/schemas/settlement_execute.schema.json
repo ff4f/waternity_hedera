@@ -1,0 +1,80 @@
+{
+  "$id": "settlement_execute.schema.json",
+  "title": "Settlement Execution",
+  "description": "Schema for settlement execution requests",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique message identifier for idempotency"
+    },
+    "settlementId": {
+      "type": "string",
+      "description": "Settlement identifier to execute"
+    },
+    "executedBy": {
+      "type": "string",
+      "pattern": "^0\\.0\\.[0-9]+$",
+      "description": "Account ID of the executor"
+    },
+    "payoutTransactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "recipientAccount": {
+            "type": "string",
+            "pattern": "^0\\.0\\.[0-9]+$",
+            "description": "Recipient account ID"
+          },
+          "txId": {
+            "type": "string",
+            "description": "Transaction ID for the payout"
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Amount paid out"
+          },
+          "assetType": {
+            "type": "string",
+            "enum": ["HBAR", "TOKEN"],
+            "description": "Type of asset paid out"
+          },
+          "tokenId": {
+            "type": "string",
+            "pattern": "^0\\.0\\.[0-9]+$",
+            "description": "Token ID if assetType is TOKEN"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["SUCCESS", "FAILED"],
+            "description": "Status of the payout transaction"
+          }
+        },
+        "required": ["recipientAccount", "txId", "amount", "assetType", "status"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "executionNotes": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Optional notes for the execution"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the execution"
+    }
+  },
+  "required": [
+    "messageId",
+    "settlementId",
+    "executedBy",
+    "payoutTransactions",
+    "timestamp"
+  ],
+  "additionalProperties": false
+}

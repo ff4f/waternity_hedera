@@ -8,6 +8,7 @@ const envSchema = z.object({
   HEDERA_NETWORK: z.enum(['testnet', 'mainnet', 'previewnet']).default('testnet'),
   HEDERA_ACCOUNT_ID: z.string().regex(/^0\.0\.[0-9]+$/, 'Invalid Hedera Account ID format'),
   HEDERA_PRIVATE_KEY: z.string().min(64, 'Invalid Hedera Private Key'),
+  HEDERA_DER_PRIVATE_KEY: z.string().min(64, 'Invalid Hedera DER Private Key'),
   
   // Hedera Services
   MIRROR_NODE_URL: z.string().url('Invalid Mirror Node URL').default('https://testnet.mirrornode.hedera.com/api/v1'),

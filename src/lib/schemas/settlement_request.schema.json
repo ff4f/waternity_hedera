@@ -1,0 +1,90 @@
+{
+  "$id": "settlement_request.schema.json",
+  "title": "Settlement Request",
+  "description": "Schema for settlement requests",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique message identifier for idempotency"
+    },
+    "wellId": {
+      "type": "string",
+      "description": "Well identifier"
+    },
+    "periodStart": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Start of settlement period"
+    },
+    "periodEnd": {
+      "type": "string",
+      "format": "date-time",
+      "description": "End of settlement period"
+    },
+    "kwhTotal": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Total kWh generated in the period"
+    },
+    "grossRevenue": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Gross revenue for the period"
+    },
+    "payouts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "recipientAccount": {
+            "type": "string",
+            "pattern": "^0\\.0\\.[0-9]+$",
+            "description": "Hedera account ID of recipient"
+          },
+          "assetType": {
+            "type": "string",
+            "enum": ["HBAR", "TOKEN"],
+            "description": "Type of asset for payout"
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Payout amount"
+          },
+          "tokenId": {
+            "type": "string",
+            "pattern": "^0\\.0\\.[0-9]+$",
+            "description": "Token ID if assetType is TOKEN"
+          }
+        },
+        "required": ["recipientAccount", "assetType", "amount"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "requestedBy": {
+      "type": "string",
+      "pattern": "^0\\.0\\.[0-9]+$",
+      "description": "Account ID of the requester"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the request"
+    }
+  },
+  "required": [
+    "messageId",
+    "wellId",
+    "periodStart",
+    "periodEnd",
+    "kwhTotal",
+    "grossRevenue",
+    "payouts",
+    "requestedBy",
+    "timestamp"
+  ],
+  "additionalProperties": false
+}

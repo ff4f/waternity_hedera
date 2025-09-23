@@ -1,104 +1,1300 @@
 openapi: 3.1.0
 info:
   title: Waternity API
+  description: |
+    Waternity is a transparent water sales and settlement platform built on Hedera Hashgraph.
+    This API provides endpoints for managing water projects, wells, settlements, and audit trails.
+    
+    ## Authentication
+    The API uses cookie-based authentication with httpOnly JWT tokens. After successful login,
+    a secure session cookie (`wty_sess`) is set with 8-hour expiry.
+    
+    ## Role-Based Access Control
+    - **INVESTOR**: Can invest in projects and view settlements
+    - **OPERATOR**: Can create wells/projects, manage operations, control meters/valves
+    - **AGENT**: Can verify/approve settlements and anchor documents
+    - **ADMIN**: Full system access
+    
+    ## Hedera Integration
+    All operations are recorded on Hedera Consensus Service (HCS) for immutable audit trails.
+    Links to HashScan explorer and Mirror Node are provided for verification.
   version: 1.0.0
-  description: API for Waternity, a platform for managing water well projects.
+  contact:
+    name: Waternity Team
+    url: https://waternity.io
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
 servers:
-  - url: http://localhost:3000/api
+  - url: http://localhost:3000
+    description: Development server
+  - url: https://waternity.vercel.app
+    description: Production server
+
 paths:
-  /hcs/events:
+  # Authentication Endpoints
+  /api/auth/login:
     post:
-      summary: Submit a new HCS Event
+      tags:
+        - Authentication
+      summary: User login
+      description: |
+        Authenticate user with username and password. Sets httpOnly session cookie on success.
+      operationId: login
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/HCSEvent'
-      responses:
-        '201':
-          description: Event submitted successfully
-  /wells:
-    get:
-      summary: Get a list of wells
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              investor:
+                summary: Investor login
+                value:
+                  username: investor1
+                  password: password123
+              operator:
+                summary: Operator login
+                value:
+                  username: operator1
+                  password: password123
       responses:
         '200':
-          description: A list of wells
+          description: Login successful
+          headers:
+            Set-Cookie:
+              description: Session cookie with JWT token
+              schema:
+                type: string
+                example: wty_sess=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; HttpOnly; Secure; SameSite=Lax; Max-Age=28800; Path=/
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Well'
-  /wells/{id}/events:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: User logout
+      description: Clears the session cookie
+      operationId: logout
+      responses:
+        '200':
+          description: Logout successful
+          headers:
+            Set-Cookie:
+              description: Cleared session cookie
+              schema:
+                type: string
+                example: wty_sess=; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Path=/
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/auth/me:
     get:
-      summary: Get events for a specific well
+      tags:
+        - Authentication
+      summary: Get current user profile
+      description: Returns the current authenticated user's profile information
+      operationId: getCurrentUser
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # HCS Events
+  /api/hcs/events:
+    post:
+      tags:
+        - HCS Events
+      summary: Submit HCS event
+      description: |
+        Submit an event to Hedera Consensus Service for immutable audit trail.
+        Events are validated against JSON Schema 2020-12 specifications.
+      operationId: submitHcsEvent
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HcsEventRequest'
+            examples:
+              projectCreated:
+                summary: Project created event
+                value:
+                  messageId: "550e8400-e29b-41d4-a716-446655440000"
+                  eventType: "project_created"
+                  timestamp: "2024-01-15T10:30:00Z"
+                  triggeredBy: "0.0.12345"
+                  entityId: "proj_001"
+                  entityType: "project"
+                  eventData:
+                    name: "Sumur Air Bersih Desa Makmur"
+                    description: "Proyek pembangunan sumur air bersih untuk 500 keluarga"
+                    fundingTarget: 10000
+                    location:
+                      address: "Desa Makmur, Kecamatan Sejahtera"
+                      latitude: -6.2088
+                      longitude: 106.8456
+      responses:
+        '201':
+          description: Event submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HcsEventResponse'
+              examples:
+                success:
+                  value:
+                    success: true
+                    messageId: "550e8400-e29b-41d4-a716-446655440000"
+                    transactionId: "0.0.12345@1705315800.123456789"
+                    consensusTimestamp: "1705315800.123456789"
+                    links:
+                      hashscan: "https://hashscan.io/testnet/transaction/0.0.12345@1705315800.123456789"
+                      mirror: "https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.12345@1705315800.123456789"
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # Wells
+  /api/wells:
+    get:
+      tags:
+        - Wells
+      summary: List all wells
+      description: |
+        Retrieve a list of all water wells in the system.
+        This endpoint is publicly accessible for transparency.
+      operationId: listWells
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of wells to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of wells to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: status
+          in: query
+          description: Filter by well status
+          schema:
+            type: string
+            enum: [active, inactive, maintenance]
+      responses:
+        '200':
+          description: Wells retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WellsListResponse'
+              examples:
+                success:
+                  value:
+                    wells:
+                      - id: "well_001"
+                        name: "Sumur Desa Makmur"
+                        location:
+                          address: "Desa Makmur, Kecamatan Sejahtera"
+                          latitude: -6.2088
+                          longitude: 106.8456
+                        status: "active"
+                        tokenId: "0.0.123456"
+                        topicId: "0.0.789012"
+                        links:
+                          hashscan: "https://hashscan.io/testnet/topic/0.0.789012"
+                          mirror: "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.789012/messages"
+                    count: 1
+                    total: 1
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/wells/{id}/events:
+    get:
+      tags:
+        - Wells
+      summary: Get well events
+      description: |
+        Retrieve all events for a specific well from the audit trail.
+        Events are sourced from Hedera Consensus Service.
+      operationId: getWellEvents
       parameters:
         - name: id
           in: path
           required: true
+          description: Well ID
           schema:
             type: string
+            example: "well_001"
+        - name: limit
+          in: query
+          description: Maximum number of events to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: eventType
+          in: query
+          description: Filter by event type
+          schema:
+            type: string
+            enum: [project_created, well_completed, meter_reading, valve_command, settlement_requested]
       responses:
         '200':
-          description: A list of events for the well
-  /settlements/request:
+          description: Well events retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WellEventsResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # Settlements
+  /api/settlements/request:
     post:
-      summary: Request a settlement
-      responses:
-        '200':
-          description: Settlement requested
-  /settlements/approve:
-    post:
-      summary: Approve a settlement
-      responses:
-        '200':
-          description: Settlement approved
-  /settlements/execute:
-    post:
-      summary: Execute a settlement
-      responses:
-        '200':
-          description: Settlement executed
-  /documents/anchor:
-    post:
-      summary: Anchor a document
+      tags:
+        - Settlements
+      summary: Request settlement
+      description: |
+        Request a new settlement for revenue distribution.
+        Only operators can request settlements.
+      operationId: requestSettlement
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettlementRequest'
       responses:
         '201':
-          description: Document anchored
-  /audit/reports:
+          description: Settlement request created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettlementResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/settlements/approve:
+    post:
+      tags:
+        - Settlements
+      summary: Approve settlement
+      description: |
+        Approve a pending settlement request.
+        Only agents can approve settlements.
+      operationId: approveSettlement
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettlementApprovalRequest'
+      responses:
+        '200':
+          description: Settlement approved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettlementResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/settlements/execute:
+    post:
+      tags:
+        - Settlements
+      summary: Execute settlement
+      description: |
+        Execute an approved settlement by transferring tokens.
+        Only agents can execute settlements.
+      operationId: executeSettlement
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettlementExecutionRequest'
+      responses:
+        '200':
+          description: Settlement executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettlementResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # Documents
+  /api/documents/anchor:
+    post:
+      tags:
+        - Documents
+      summary: Anchor document
+      description: |
+        Anchor a document to Hedera File Service (HFS) for immutable storage.
+        Only agents can anchor documents.
+      operationId: anchorDocument
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentAnchorRequest'
+      responses:
+        '201':
+          description: Document anchored successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentAnchorResponse'
+              examples:
+                success:
+                  value:
+                    success: true
+                    documentId: "doc_001"
+                    hfsFileId: "0.0.345678"
+                    links:
+                      hashscan: "https://hashscan.io/testnet/file/0.0.345678"
+                      mirror: "https://testnet.mirrornode.hedera.com/api/v1/files/0.0.345678"
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # Audit
+  /api/audit/reports:
     get:
+      tags:
+        - Audit
       summary: Get audit reports
+      description: |
+        Retrieve audit reports for transparency and compliance.
+        This endpoint is publicly accessible.
+      operationId: getAuditReports
+      parameters:
+        - name: wellId
+          in: query
+          description: Filter by well ID
+          schema:
+            type: string
+        - name: fromDate
+          in: query
+          description: Start date for report period
+          schema:
+            type: string
+            format: date
+        - name: toDate
+          in: query
+          description: End date for report period
+          schema:
+            type: string
+            format: date
       responses:
         '200':
-          description: A list of audit reports
-  /meta/links:
+          description: Audit reports retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditReportsResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # Metadata
+  /api/meta/links:
     get:
-      summary: Get meta links
+      tags:
+        - Metadata
+      summary: Get verification links
+      description: |
+        Get HashScan and Mirror Node links for verification.
+        This endpoint is publicly accessible for transparency.
+      operationId: getVerificationLinks
+      parameters:
+        - name: wellId
+          in: query
+          required: true
+          description: Well ID to get links for
+          schema:
+            type: string
+            example: "well_001"
       responses:
         '200':
-          description: A list of meta links
-  /health:
+          description: Verification links retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationLinksResponse'
+              examples:
+                success:
+                  value:
+                    hashscan:
+                      topic: "https://hashscan.io/testnet/topic/0.0.789012"
+                      token: "https://hashscan.io/testnet/token/0.0.123456"
+                      file: "https://hashscan.io/testnet/file/0.0.345678"
+                    mirror:
+                      topic: "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.789012/messages"
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # Health
+  /api/health:
     get:
+      tags:
+        - System
       summary: Health check
+      description: |
+        Check the health status of the API and its dependencies.
+        This endpoint is publicly accessible.
+      operationId: healthCheck
       responses:
         '200':
-          description: API is healthy
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                healthy:
+                  value:
+                    status: "healthy"
+                    timestamp: "2024-01-15T10:30:00Z"
+                    version: "1.0.0"
+                    environment: "development"
+                    services:
+                      database:
+                        status: "connected"
+                        latency: 15
+                      hedera:
+                        network: "testnet"
+                        mirrorNode:
+                          status: "reachable"
+                          latency: 120
+                    uptime: 3600
+                    memory:
+                      used: 134217728
+                      total: 268435456
+                      percentage: 50
+        '503':
+          description: System is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  # Documentation
+  /api/docs:
+    get:
+      tags:
+        - Documentation
+      summary: Get OpenAPI specification
+      description: |
+        Returns the OpenAPI specification in YAML format.
+        This endpoint serves the raw YAML file for API documentation tools.
+      operationId: getOpenApiSpec
+      responses:
+        '200':
+          description: OpenAPI specification
+          content:
+            application/yaml:
+              schema:
+                type: string
+                example: |
+                  openapi: 3.1.0
+                  info:
+                    title: Waternity API
+                    version: 1.0.0
+                  # ... rest of the specification
+        '500':
+          $ref: '#/components/responses/InternalError'
+
 components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: wty_sess
+      description: |
+        Session-based authentication using httpOnly JWT cookies.
+        The cookie is automatically set after successful login and cleared on logout.
+        
+        Cookie attributes:
+        - HttpOnly: true (prevents XSS attacks)
+        - Secure: true (HTTPS only in production)
+        - SameSite: Lax (CSRF protection)
+        - Max-Age: 28800 (8 hours)
+
   schemas:
+    # Authentication Schemas
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          description: User's username
+          example: "investor1"
+        password:
+          type: string
+          format: password
+          description: User's password
+          example: "password123"
+
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        user:
+          $ref: '#/components/schemas/User'
+        message:
+          type: string
+          example: "Login successful"
+
+    UserProfileResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        user:
+          $ref: '#/components/schemas/UserProfile'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "1"
+        name:
+          type: string
+          example: "John Investor"
+        role:
+          $ref: '#/components/schemas/Role'
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "1"
+        name:
+          type: string
+          example: "John Investor"
+        role:
+          $ref: '#/components/schemas/Role'
+        issuedAt:
+          type: integer
+          description: JWT issued at timestamp
+          example: 1705315800
+        expiresAt:
+          type: integer
+          description: JWT expiration timestamp
+          example: 1705344600
+
+    Role:
+      type: string
+      enum:
+        - INVESTOR
+        - OPERATOR
+        - AGENT
+        - ADMIN
+      description: |
+        User roles with different permissions:
+        - INVESTOR: Can invest in projects and view settlements
+        - OPERATOR: Can create wells/projects, manage operations
+        - AGENT: Can verify/approve settlements and anchor documents
+        - ADMIN: Full system access
+
+    # HCS Event Schemas (referencing JSON Schema 2020-12)
+    HcsEventRequest:
+      $ref: 'hcs-event-schemas.json#/definitions/baseEvent'
+
+    HcsEventResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        messageId:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        transactionId:
+          type: string
+          description: Hedera transaction ID
+          example: "0.0.12345@1705315800.123456789"
+        consensusTimestamp:
+          type: string
+          description: Consensus timestamp from Hedera
+          example: "1705315800.123456789"
+        links:
+          $ref: '#/components/schemas/HederaLinks'
+
+    # Well Schemas
+    WellsListResponse:
+      type: object
+      properties:
+        wells:
+          type: array
+          items:
+            $ref: '#/components/schemas/Well'
+        count:
+          type: integer
+          description: Number of wells in current response
+          example: 20
+        total:
+          type: integer
+          description: Total number of wells
+          example: 150
+
     Well:
       type: object
       properties:
         id:
           type: string
+          example: "well_001"
         name:
           type: string
-        description:
+          example: "Sumur Desa Makmur"
+        location:
+          $ref: '#/components/schemas/Location'
+        status:
           type: string
-    HCSEvent:
+          enum: [active, inactive, maintenance]
+          example: "active"
+        tokenId:
+          type: string
+          description: Hedera token ID
+          example: "0.0.123456"
+        topicId:
+          type: string
+          description: Hedera topic ID for events
+          example: "0.0.789012"
+        links:
+          $ref: '#/components/schemas/HederaLinks'
+
+    WellEventsResponse:
       type: object
       properties:
-        type:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/WellEvent'
+        count:
+          type: integer
+          example: 25
+
+    WellEvent:
+      type: object
+      properties:
+        messageId:
           type: string
-        data:
+          format: uuid
+        eventType:
+          type: string
+          example: "meter_reading"
+        timestamp:
+          type: string
+          format: date-time
+        triggeredBy:
+          type: string
+          pattern: "^0\\.0\\.[0-9]+$"
+        eventData:
           type: object
+          description: Event-specific data
+        hederaData:
+          $ref: '#/components/schemas/HederaTransaction'
+
+    # Settlement Schemas
+    SettlementRequest:
+      type: object
+      required:
+        - messageId
+        - wellId
+        - periodStart
+        - periodEnd
+        - totalRevenue
+      properties:
+        messageId:
+          type: string
+          format: uuid
+          description: Idempotency key
+        wellId:
+          type: string
+          example: "well_001"
+        periodStart:
+          type: string
+          format: date
+          example: "2024-01-01"
+        periodEnd:
+          type: string
+          format: date
+          example: "2024-01-31"
+        totalRevenue:
+          type: number
+          minimum: 0
+          example: 5000.50
+        description:
+          type: string
+          example: "Monthly settlement for January 2024"
+
+    SettlementApprovalRequest:
+      type: object
+      required:
+        - messageId
+        - settlementId
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        settlementId:
+          type: string
+          example: "settlement_001"
+        notes:
+          type: string
+          example: "Approved after document verification"
+
+    SettlementExecutionRequest:
+      type: object
+      required:
+        - messageId
+        - settlementId
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        settlementId:
+          type: string
+          example: "settlement_001"
+
+    SettlementResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        settlement:
+          $ref: '#/components/schemas/Settlement'
+        links:
+          $ref: '#/components/schemas/HederaLinks'
+
+    Settlement:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "settlement_001"
+        wellId:
+          type: string
+          example: "well_001"
+        status:
+          type: string
+          enum: [pending, approved, executed, rejected]
+          example: "approved"
+        totalRevenue:
+          type: number
+          example: 5000.50
+        payouts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Payout'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Payout:
+      type: object
+      properties:
+        accountId:
+          type: string
+          pattern: "^0\\.0\\.[0-9]+$"
+          example: "0.0.12345"
+        amount:
+          type: number
+          minimum: 0
+          example: 1250.25
+        role:
+          type: string
+          example: "investor"
+        percentage:
+          type: number
+          minimum: 0
+          maximum: 100
+          example: 25.0
+
+    # Document Schemas
+    DocumentAnchorRequest:
+      type: object
+      required:
+        - messageId
+        - wellId
+        - documentType
+        - content
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        wellId:
+          type: string
+          example: "well_001"
+        documentType:
+          type: string
+          enum: [compliance_report, audit_report, maintenance_log, settlement_proof]
+          example: "compliance_report"
+        content:
+          type: string
+          format: base64
+          description: Base64 encoded document content
+        filename:
+          type: string
+          example: "compliance_report_2024_01.pdf"
+        description:
+          type: string
+          example: "Monthly compliance report for January 2024"
+
+    DocumentAnchorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        documentId:
+          type: string
+          example: "doc_001"
+        hfsFileId:
+          type: string
+          description: Hedera File Service file ID
+          example: "0.0.345678"
+        links:
+          $ref: '#/components/schemas/HederaLinks'
+
+    # Audit Schemas
+    AuditReportsResponse:
+      type: object
+      properties:
+        reports:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditReport'
+        count:
+          type: integer
+          example: 10
+
+    AuditReport:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "audit_001"
+        wellId:
+          type: string
+          example: "well_001"
+        reportType:
+          type: string
+          enum: [financial, operational, compliance]
+          example: "financial"
+        period:
+          $ref: '#/components/schemas/Period'
+        summary:
+          type: object
+          description: Report summary data
+        links:
+          $ref: '#/components/schemas/HederaLinks'
+        createdAt:
+          type: string
+          format: date-time
+
+    # Common Schemas
+    Location:
+      type: object
+      required:
+        - latitude
+        - longitude
+      properties:
+        address:
+          type: string
+          maxLength: 200
+          example: "Desa Makmur, Kecamatan Sejahtera, Kabupaten Maju"
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+          example: -6.2088
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+          example: 106.8456
+
+    Period:
+      type: object
+      properties:
+        start:
+          type: string
+          format: date
+          example: "2024-01-01"
+        end:
+          type: string
+          format: date
+          example: "2024-01-31"
+
+    HederaTransaction:
+      type: object
+      properties:
+        transactionId:
+          type: string
+          description: Hedera transaction ID
+          example: "0.0.12345@1705315800.123456789"
+        consensusTimestamp:
+          type: string
+          description: Consensus timestamp from Hedera
+          example: "1705315800.123456789"
+        hashscanUrl:
+          type: string
+          format: uri
+          description: URL to HashScan explorer
+          example: "https://hashscan.io/testnet/transaction/0.0.12345@1705315800.123456789"
+
+    HederaLinks:
+      type: object
+      properties:
+        hashscan:
+          type: string
+          format: uri
+          description: HashScan explorer link
+          example: "https://hashscan.io/testnet/topic/0.0.789012"
+        mirror:
+          type: string
+          format: uri
+          description: Mirror Node API link
+          example: "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.789012/messages"
+
+    VerificationLinksResponse:
+      type: object
+      properties:
+        hashscan:
+          type: object
+          properties:
+            topic:
+              type: string
+              format: uri
+              example: "https://hashscan.io/testnet/topic/0.0.789012"
+            token:
+              type: string
+              format: uri
+              example: "https://hashscan.io/testnet/token/0.0.123456"
+            file:
+              type: string
+              format: uri
+              example: "https://hashscan.io/testnet/file/0.0.345678"
+        mirror:
+          type: object
+          properties:
+            topic:
+              type: string
+              format: uri
+              example: "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.789012/messages"
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+          example: "healthy"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        version:
+          type: string
+          example: "1.0.0"
+        environment:
+          type: string
+          enum: [development, staging, production]
+          example: "development"
+        services:
+          type: object
+          properties:
+            database:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [connected, disconnected, error]
+                  example: "connected"
+                latency:
+                  type: integer
+                  description: Database response time in milliseconds
+                  example: 15
+                error:
+                  type: string
+                  description: Error message if status is error
+            hedera:
+              type: object
+              properties:
+                network:
+                  type: string
+                  enum: [mainnet, testnet, previewnet]
+                  example: "testnet"
+                mirrorNode:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      enum: [reachable, unreachable, error]
+                      example: "reachable"
+                    latency:
+                      type: integer
+                      description: Mirror Node response time in milliseconds
+                      example: 120
+                    error:
+                      type: string
+                      description: Error message if status is error
+        uptime:
+          type: integer
+          description: Server uptime in seconds
+          example: 3600
+        memory:
+          type: object
+          properties:
+            used:
+              type: integer
+              description: Used memory in bytes
+              example: 134217728
+            total:
+              type: integer
+              description: Total memory in bytes
+              example: 268435456
+            percentage:
+              type: number
+              description: Memory usage percentage
+              example: 50.0
+
+    # Response Schemas
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Operation completed successfully"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          description: Additional error details
+        timestamp:
+          type: string
+          format: date-time
+
+  responses:
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            validation:
+              value:
+                error: "validation_error"
+                message: "Request validation failed"
+                details:
+                  field: "username"
+                  issue: "Username is required"
+                timestamp: "2024-01-15T10:30:00Z"
+
+    UnauthorizedError:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unauthorized:
+              value:
+                error: "unauthorized"
+                message: "Authentication required"
+                timestamp: "2024-01-15T10:30:00Z"
+
+    ForbiddenError:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorResponse'
+              - type: object
+                properties:
+                  needRole:
+                    type: string
+                    description: Required role for this operation
+          examples:
+            forbidden:
+              value:
+                error: "forbidden"
+                message: "Insufficient permissions"
+                needRole: "OPERATOR"
+                timestamp: "2024-01-15T10:30:00Z"
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            notFound:
+              value:
+                error: "not_found"
+                message: "Resource not found"
+                timestamp: "2024-01-15T10:30:00Z"
+
+    ConflictError:
+      description: Resource conflict (e.g., duplicate operation)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            conflict:
+              value:
+                error: "conflict"
+                message: "Operation already exists"
+                details:
+                  messageId: "550e8400-e29b-41d4-a716-446655440000"
+                timestamp: "2024-01-15T10:30:00Z"
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            internal:
+              value:
+                error: "internal_error"
+                message: "An internal error occurred"
+                timestamp: "2024-01-15T10:30:00Z"
+
+tags:
+  - name: Authentication
+    description: User authentication and session management
+  - name: HCS Events
+    description: Hedera Consensus Service event submission for audit trails
+  - name: Wells
+    description: Water well management and monitoring
+  - name: Settlements
+    description: Revenue settlement and distribution
+  - name: Documents
+    description: Document anchoring to Hedera File Service
+  - name: Audit
+    description: Audit reports and transparency features
+  - name: Metadata
+    description: System metadata and verification links
+  - name: System
+    description: System health and status endpoints
+  - name: Documentation
+    description: API documentation endpoints
+
+externalDocs:
+  description: Hedera Hashgraph Documentation
+  url: https://docs.hedera.com/

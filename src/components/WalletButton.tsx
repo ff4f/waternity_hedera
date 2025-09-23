@@ -2,7 +2,7 @@
 
 import { AccountId } from "@hashgraph/sdk";
 import { useCallback, useEffect, useState } from "react";
-import { initializeHashConnect, connectToHashPack } from "@/lib/wallet/connect";
+import { initializeHashConnect, connectToHashPack } from '@/lib/wallet/connect';
 
 export default function WalletButton() {
     const [accountId, setAccountId] = useState<AccountId | null>(null);

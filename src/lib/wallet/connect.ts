@@ -1,8 +1,8 @@
-import { HashConnect, SessionData, HashConnectConnectionState } from 'hashconnect';
 import { AccountId, LedgerId, Transaction, TransactionId } from '@hashgraph/sdk';
 
-let hashconnect: HashConnect | null = null;
-let pairingData: SessionData | null = null;
+let hashconnect: any = null;
+let pairingData: any = null;
+let HashConnect: any = null;
 
 const appMetadata = {
     name: "Waternity",
@@ -12,10 +12,17 @@ const appMetadata = {
 };
 
 export const initializeHashConnect = async () => {
+    if (typeof window === 'undefined') return null;
+    
+    if (!HashConnect) {
+        const hashconnectModule = await import('hashconnect');
+        HashConnect = hashconnectModule.HashConnect;
+    }
+    
     if (!hashconnect) {
         hashconnect = new HashConnect(LedgerId.TESTNET, process.env.NEXT_PUBLIC_PROJECT_ID!, appMetadata, true);
 
-        hashconnect.pairingEvent.on((newPairing: SessionData) => {
+        hashconnect.pairingEvent.on((newPairing: any) => {
             pairingData = newPairing;
         });
 
@@ -39,7 +46,7 @@ export const connectToHashPack = async () => {
     }
 
     return new Promise<AccountId>((resolve, reject) => {
-        const pairingEventHandler = (pairingInfo: SessionData) => {
+        const pairingEventHandler = (pairingInfo: any) => {
             if (pairingInfo.accountIds.length > 0) {
                 const accountId = AccountId.fromString(pairingInfo.accountIds[0]);
                 hashconnect!.pairingEvent.off(pairingEventHandler);
@@ -48,7 +55,7 @@ export const connectToHashPack = async () => {
                 reject(new Error("No account found"));
             }
         };
-        hashconnect.pairingEvent.on(pairingEventHandler);
+        hashconnect!.pairingEvent.on(pairingEventHandler);
     });
 };
 

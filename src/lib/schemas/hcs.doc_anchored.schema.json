@@ -1,12 +1,12 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "HCS Document Anchored Event Payload",
   "type": "object",
   "properties": {
     "documentId": { "type": "string" },
     "cid": { "type": "string" },
     "digestAlgo": { "type": "string" },
-    "digestHex": { "type": "string" }
+    "digestHex": { "type": "string" },
+    "hfsFileId": { "type": "string" }
   },
   "required": ["documentId", "cid", "digestAlgo", "digestHex"]
 }
