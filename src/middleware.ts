@@ -5,29 +5,21 @@ import { hasRole, hasAnyRole } from './lib/auth/roles';
 
 // Public routes that don't require authentication
 const PUBLIC_ROUTES = [
-  '/api/health',
-  '/api/docs',
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/logout',
   '/api/auth/me',
-  '/api/hcs/events',
-  '/api/wells',
-  '/api/users',
-  '/api/dashboard/stats',
-  '/api/investor',
-  '/api/agent',
-  '/api/hts/tokens',
-  '/api/settlements',
-  '/api/water-quality',
+  '/test-proof-pill',
+  '/test-csv-export',
   '/dashboard',
 ];
 
-// Public GET endpoints (read-only access)
+// Public GET endpoints (read-only access) - allowlist for public GET
 const PUBLIC_GET_ROUTES = [
-  '/api/wells', // List wells
-  '/api/meta',  // Metadata
-  '/api/docs',  // Documentation
+  '/api/health',   // Health check
+  '/api/docs',     // Documentation
+  '/api/wells',    // List wells (read-only)
+  '/api/meta',     // Metadata
 ];
 
 // Role-specific route patterns
@@ -35,6 +27,7 @@ const ROLE_ROUTES = {
   [Role.INVESTOR]: [
     '/api/wells/*/invest',
     '/api/settlements/*/invest',
+    '/api/investor',
     '/app/investor',
   ],
   [Role.OPERATOR]: [
@@ -113,47 +106,30 @@ export async function middleware(request: NextRequest) {
   if (
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/static/') ||
-    pathname.includes('.') // Files with extensions
+    pathname === '/favicon.ico'
   ) {
     return NextResponse.next();
   }
 
-  // Allow public routes
+  // Allow public routes (auth endpoints, test pages)
   if (isPublicRoute(pathname)) {
     return NextResponse.next();
   }
 
-  // Allow public GET routes
-  if (isPublicGetRoute(pathname, method)) {
+  // Allow public GET routes only (health, docs, wells list)
+  if (method === 'GET' && isPublicGetRoute(pathname, method)) {
     return NextResponse.next();
   }
 
-  // Check if route needs protection
-  if (!isProtectedRoute(pathname)) {
-    return NextResponse.next();
-  }
-
-  // Get user session
-  const user = await getSessionFromRequest(request);
-
-  // Require authentication for protected routes
-  if (!user) {
-    return createUnauthorizedResponse('Authentication required');
-  }
-
-  // Check role-specific access
-  const requiredRole = getRequiredRoleForRoute(pathname);
-  
-  if (requiredRole) {
-    // Check if user has the required role (Admin has access to everything)
-    if (!hasRole(user, requiredRole)) {
-      return createForbiddenResponse(requiredRole);
-    }
-  }
-
-  // For mutating operations (POST, PUT, DELETE, PATCH), require authentication
+  // DENY MUTATIONS BY DEFAULT - All POST, PUT, DELETE, PATCH require authentication
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-    // Additional role checks for specific endpoints
+    const user = await getSessionFromRequest(request);
+    
+    if (!user) {
+      return createUnauthorizedResponse('Authentication required for mutations');
+    }
+
+    // Role-specific mutation checks
     
     // Investment endpoints - Investors only
     if (pathname.includes('/invest')) {
@@ -163,26 +139,52 @@ export async function middleware(request: NextRequest) {
     }
     
     // Well/project creation and operations - Operators only
-    if (
-      pathname.includes('/wells/create') ||
+    else if (
+      pathname.includes('/wells') && method === 'POST' ||
       pathname.includes('/complete') ||
       pathname.includes('/meter') ||
-      pathname.includes('/valve')
+      pathname.includes('/valve') ||
+      pathname.includes('/hcs/meter_reading') ||
+      pathname.includes('/hcs/valve_command')
     ) {
       if (!hasAnyRole(user, [Role.OPERATOR, Role.ADMIN])) {
         return createForbiddenResponse(Role.OPERATOR);
       }
     }
     
-    // Settlement verification and document anchoring - Agents only
-    if (
+    // Agent endpoints - Agents only
+    else if (
+      pathname.startsWith('/api/agent') ||
       pathname.includes('/verify') ||
       pathname.includes('/approve') ||
-      pathname.includes('/anchor')
+      pathname.includes('/anchor') ||
+      pathname.includes('/hcs/doc_anchored') ||
+      pathname.includes('/hcs/settlement_approved')
     ) {
       if (!hasAnyRole(user, [Role.AGENT, Role.ADMIN])) {
         return createForbiddenResponse(Role.AGENT);
       }
+    }
+    
+    // Admin endpoints - Admin only
+    else if (pathname.startsWith('/api/admin') || pathname.startsWith('/api/system')) {
+      if (user.role !== Role.ADMIN) {
+        return createForbiddenResponse(Role.ADMIN);
+      }
+    }
+  }
+
+  // For protected GET routes, check authentication and role
+  if (isProtectedRoute(pathname)) {
+    const user = await getSessionFromRequest(request);
+    
+    if (!user) {
+      return createUnauthorizedResponse('Authentication required');
+    }
+
+    const requiredRole = getRequiredRoleForRoute(pathname);
+    if (requiredRole && !hasRole(user, requiredRole)) {
+      return createForbiddenResponse(requiredRole);
     }
   }
 

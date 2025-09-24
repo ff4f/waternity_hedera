@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for idempotency"
+    },
+    "code": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Well code identifier"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Well name"
+    },
+    "location": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Well location"
+    },
+    "topicId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Hedera topic ID"
+    },
+    "operatorUserId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Operator user ID"
+    },
+    "tokenId": {
+      "type": "string",
+      "description": "Optional token ID"
+    }
+  },
+  "required": ["messageId", "code", "name", "location", "topicId", "operatorUserId"],
+  "additionalProperties": false
+}

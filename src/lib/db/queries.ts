@@ -76,7 +76,11 @@ export async function getAuditReport(params: {
       periodEnd: { lte: periodEnd },
     },
     include: {
-      payouts: true,
+      payouts: {
+        orderBy: {
+          createdAt: 'asc',
+        },
+      },
       well: {
         include: {
           events: {
@@ -99,6 +103,8 @@ export async function getAuditReport(params: {
             },
             select: {
               hfsFileId: true,
+              type: true,
+              createdAt: true,
             },
           },
         },
@@ -108,4 +114,43 @@ export async function getAuditReport(params: {
       periodStart: 'asc',
     },
   });
+}
+
+export async function getWellMetaLinks(wellId: string) {
+  const well = await prisma.well.findUnique({
+    where: { id: wellId },
+    select: {
+      topicId: true,
+      tokenId: true,
+      documents: {
+        select: {
+          hfsFileId: true,
+        },
+        where: {
+          hfsFileId: {
+            not: null,
+          },
+        },
+        take: 1,
+        orderBy: {
+          createdAt: 'desc',
+        },
+      },
+    },
+  });
+
+  if (!well) {
+    return null;
+  }
+
+  return {
+    hashscan: {
+      topic: well.topicId,
+      token: well.tokenId || undefined,
+      file: well.documents[0]?.hfsFileId || undefined,
+    },
+    mirror: {
+      topic: well.topicId,
+    },
+  };
 }

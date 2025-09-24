@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "invest.schema.json",
+  "title": "Investment Schema",
+  "description": "Schema for investment requests",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the message"
+    },
+    "projectId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the project to invest in"
+    },
+    "wellId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the well to invest in"
+    },
+    "amount": {
+      "type": "number",
+      "minimum": 0,
+      "exclusiveMinimum": true,
+      "description": "Investment amount (must be greater than 0)"
+    }
+  },
+  "required": ["messageId", "amount"],
+  "anyOf": [
+    {"required": ["projectId"]},
+    {"required": ["wellId"]}
+  ],
+  "additionalProperties": false
+}

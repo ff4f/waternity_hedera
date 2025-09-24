@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "meter_reading.schema.json",
+  "title": "Meter Reading Schema",
+  "description": "Schema for meter reading submissions",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the message"
+    },
+    "wellId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the well"
+    },
+    "reading": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Meter reading value"
+    },
+    "unit": {
+      "type": "string",
+      "enum": ["kWh", "liters", "cubic_meters"],
+      "description": "Unit of measurement"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Reading timestamp"
+    },
+    "meterId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the meter"
+    },
+    "readBy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Person or system that took the reading"
+    }
+  },
+  "required": ["messageId", "wellId", "reading", "unit", "timestamp", "meterId", "readBy"],
+  "additionalProperties": false
+}

@@ -1,20 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { syncTopicMessages } from "@/lib/hedera/mirror";
-import { getNextSyncTimestamp, updateSyncCursor } from "@/lib/mirror/cursors";
+import { pullAndUpsert, saveCursor } from "@/lib/mirror/cursors";
 import { z } from "zod";
 
 const PullTopicSchema = z.object({
   wellId: z.string().optional(),
   topicId: z.string().optional(),
-  limit: z.number().int().positive().max(100).default(50),
-  forceSync: z.boolean().default(false)
+  fromTs: z.string().optional()
 });
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { wellId, topicId, limit, forceSync } = PullTopicSchema.parse(body);
+    const { wellId, topicId, fromTs } = PullTopicSchema.parse(body);
 
     // Validate that either wellId or topicId is provided
     if (!wellId && !topicId) {
@@ -48,76 +46,21 @@ export async function POST(request: Request) {
       targetTopicId = topicId!;
     }
 
-    // Get the next sync timestamp (cursor-based)
-    const fromTimestamp = forceSync ? "0" : await getNextSyncTimestamp(targetTopicId);
-
-    // Sync messages from mirror node
-    const syncResult = await syncTopicMessages(targetTopicId, fromTimestamp || "0", limit);
-
-    let newEventsCount = 0;
-    let updatedEventsCount = 0;
-
-    if (syncResult.messages.length > 0) {
-      // Process and upsert events
-      const eventData = syncResult.messages.map((msg) => {
-        const eventType = msg.payload?.type || 'UNKNOWN';
-        const payloadJson = JSON.stringify(msg.payload);
-
-        return {
-          ...(targetWellId && { wellId: targetWellId }),
-          type: eventType,
-          messageId: msg.messageId || `mirror-${msg.sequenceNumber}`,
-          consensusTime: new Date(msg.consensusTime),
-          sequenceNumber: BigInt(msg.sequenceNumber),
-          hash: msg.runningHash,
-          payloadJson
-        };
-      });
-
-      // Use transaction for atomic operations
-      await prisma.$transaction(async (tx) => {
-        for (const event of eventData) {
-          const result = await tx.hcsEvent.upsert({
-            where: {
-              messageId: event.messageId
-            },
-            update: {
-              type: event.type,
-              consensusTime: event.consensusTime,
-              sequenceNumber: event.sequenceNumber,
-              hash: event.hash,
-              payloadJson: event.payloadJson
-            },
-            create: event
-          });
-
-          // Count new vs updated events (simplified)
-          if (result.createdAt.getTime() === result.consensusTime?.getTime()) {
-            newEventsCount++;
-          } else {
-            updatedEventsCount++;
-          }
-        }
-      });
-
-      // Update sync cursor with the latest consensus timestamp
-      if (syncResult.messages.length > 0) {
-        const latestMessage = syncResult.messages[syncResult.messages.length - 1];
-        await updateSyncCursor(targetTopicId, latestMessage.consensusTime);
-      }
+    // If fromTs is provided, override the cursor
+    if (fromTs) {
+      await saveCursor(targetTopicId, fromTs);
     }
+
+    // Run pullAndUpsert to fetch and store messages
+    const result = await pullAndUpsert({ topicId: targetTopicId, wellId: targetWellId || undefined });
 
     return NextResponse.json({
       success: true,
       data: {
         topicId: targetTopicId,
         wellId: targetWellId,
-        messagesFound: syncResult.messages.length,
-        newEvents: newEventsCount,
-        updatedEvents: updatedEventsCount,
-        hasMore: syncResult.hasMore,
-        fromTimestamp,
-        forceSync
+        pulled: result.pulled,
+        lastConsensusTime: result.lastConsensusTime
       }
     });
 

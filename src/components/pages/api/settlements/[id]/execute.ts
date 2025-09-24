@@ -19,7 +19,7 @@ async function handler(
         settlementId: settlement.id,
         recipientAccount: '0.0.12345', // Placeholder
         assetType: 'HBAR', // Placeholder
-        amount: settlement.grossRevenue,
+        amount: settlement.grossRevenue || 0,
         status: 'PENDING',
       },
     });

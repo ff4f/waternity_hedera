@@ -1,128 +1,84 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { validateSchema } from './ajv';
-import { v4 as uuidv4, validate as validateUUID } from 'uuid';
-
-interface ValidationError {
-  path: string;
-  msg: string;
-  keyword: string;
-}
-
-interface ValidationErrorResponse {
-  error: 'validation';
-  details: ValidationError[];
-}
-
-type RouteHandler = (req: NextRequest, context?: any) => Promise<NextResponse> | NextResponse;
+import { NextRequest } from 'next/server';
+import { ajv } from './ajv';
+import { JSONSchemaType } from 'ajv';
 
 /**
- * Higher-order function to wrap route handlers with schema validation
- * @param schemaId - The schema ID to validate against
- * @param handler - The route handler function
- * @returns Wrapped handler with validation
+ * Higher-order function wrapper for schema validation
+ * Parses JSON body once, validates against schema, and calls handler with validated data
  */
-export function withSchema(schemaId: string, handler: RouteHandler) {
-  return async (req: NextRequest, context?: any): Promise<NextResponse> => {
+export function withSchema<T>(
+  schema: JSONSchemaType<T> | object,
+  handler: (req: NextRequest, res: any, body: T) => Promise<Response>
+) {
+  return async (req: NextRequest, res?: any): Promise<Response> => {
     try {
-      // Only validate for POST, PUT, PATCH methods
-      if (!['POST', 'PUT', 'PATCH'].includes(req.method)) {
-        return handler(req, context);
-      }
-
-      // Parse request body
+      // Parse JSON body once
       let body: any;
       try {
         const text = await req.text();
-        body = text ? JSON.parse(text) : {};
-      } catch (parseError) {
-        return NextResponse.json(
-          {
-            error: 'validation',
-            details: [{
-              path: 'body',
-              msg: 'Invalid JSON format',
-              keyword: 'format'
-            }]
-          } as ValidationErrorResponse,
-          { status: 400 }
+        if (!text.trim()) {
+          return new Response(
+          JSON.stringify({ error: 'Validation failed', details: ['Request body is required'] }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
         );
-      }
-
-      // Validate Idempotency-Key header or messageId in body
-      const idempotencyKey = req.headers.get('idempotency-key') || body.messageId;
-      if (idempotencyKey) {
-        if (!validateUUID(idempotencyKey)) {
-          return NextResponse.json(
-            {
-              error: 'validation',
-              details: [{
-                path: idempotencyKey === req.headers.get('idempotency-key') ? 'headers.idempotency-key' : 'body.messageId',
-                msg: 'Must be a valid UUIDv4',
-                keyword: 'format'
-              }]
-            } as ValidationErrorResponse,
-            { status: 400 }
-          );
         }
-      }
-
-      // Validate request body against schema
-      const validation = validateSchema(schemaId, body);
-      if (!validation.valid) {
-        const details: ValidationError[] = validation.errors.map(error => ({
-          path: error.instancePath || error.schemaPath || 'unknown',
-          msg: error.message || 'Validation failed',
-          keyword: error.keyword || 'unknown'
-        }));
-
-        return NextResponse.json(
-          {
-            error: 'validation',
-            details
-          } as ValidationErrorResponse,
-          { status: 400 }
+        body = JSON.parse(text);
+      } catch (parseError) {
+        return new Response(
+          JSON.stringify({ error: 'Validation failed', details: ['Invalid JSON format'] }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
         );
       }
 
-      // Create new request with parsed body
-      const newReq = new NextRequest(req.url, {
-        method: req.method,
-        headers: req.headers,
-        body: JSON.stringify(body)
-      });
+      // Validate against schema
+      const validate = ajv.compile(schema);
+      const valid = validate(body);
 
-      // Add parsed body to request for easy access
-      (newReq as any).parsedBody = body;
-      (newReq as any).idempotencyKey = idempotencyKey;
+      if (!valid) {
+        const details = validate.errors?.map(error => {
+          const path = error.instancePath || error.schemaPath || '';
+          const message = error.message || 'Validation failed';
+          return `${path}: ${message}`;
+        }) || ['Validation failed'];
 
-      return handler(newReq, context);
+        return new Response(
+          JSON.stringify({ error: 'Validation failed', details }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Call handler with validated body
+      return await handler(req, res, body as T);
     } catch (error) {
-      console.error('Schema validation error:', error);
-      return NextResponse.json(
-        {
-          error: 'validation',
-          details: [{
-            path: 'internal',
-            msg: 'Internal validation error',
-            keyword: 'internal'
-          }]
-        } as ValidationErrorResponse,
-        { status: 500 }
+      console.error('withSchema error:', error);
+      return new Response(
+        JSON.stringify({ error: 'internal_server_error', details: ['An unexpected error occurred'] }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
   };
 }
 
 /**
- * Extract parsed body from request (added by withSchema)
+ * Utility function to validate data against a schema without the HTTP wrapper
  */
-export function getParsedBody(req: NextRequest): any {
-  return (req as any).parsedBody;
-}
+export function validateData<T>(schema: JSONSchemaType<T> | object, data: any): {
+  valid: boolean;
+  errors?: string[];
+  data?: T;
+} {
+  const validate = ajv.compile(schema);
+  const valid = validate(data);
 
-/**
- * Extract idempotency key from request (added by withSchema)
- */
-export function getIdempotencyKey(req: NextRequest): string | undefined {
-  return (req as any).idempotencyKey;
+  if (!valid) {
+    const errors = validate.errors?.map(error => {
+      const path = error.instancePath || error.schemaPath || '';
+      const message = error.message || 'Validation failed';
+      return `${path}: ${message}`;
+    }) || ['Validation failed'];
+
+    return { valid: false, errors };
+  }
+
+  return { valid: true, data: data as T };
 }

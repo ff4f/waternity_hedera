@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "settlement_request.schema.json",
+  "title": "Settlement Request Schema",
+  "description": "Schema for settlement requests",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the message"
+    },
+    "wellId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the well"
+    },
+    "periodStart": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Start of the settlement period"
+    },
+    "periodEnd": {
+      "type": "string",
+      "format": "date-time",
+      "description": "End of the settlement period"
+    },
+    "grossRevenue": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Gross revenue for the period"
+    },
+    "kwhTotal": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Total kWh generated during the period"
+    },
+    "operatingCosts": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Operating costs for the period"
+    },
+    "netRevenue": {
+      "type": "number",
+      "description": "Net revenue after costs"
+    },
+    "requestedBy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Entity requesting the settlement"
+    }
+  },
+  "required": ["messageId", "wellId", "periodStart", "periodEnd", "grossRevenue", "kwhTotal", "requestedBy"],
+  "additionalProperties": false
+}

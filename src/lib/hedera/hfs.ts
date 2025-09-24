@@ -4,6 +4,7 @@ import {
   Hbar,
   Client,
 } from "@hashgraph/sdk";
+import { createHash } from "crypto";
 
 const MAX_FILE_SIZE = 4096; // 4KB, leaving some buffer for safety
 const MAX_SINGLE_FILE_SIZE = 900_000; // 900KB limit for single file creation
@@ -153,4 +154,16 @@ export async function bundleMonthlyReport({ wellId, contentBytes, client }: { we
     fileId: fileId.toString(),
     hashscanFileUrl,
   };
+}
+
+/**
+ * Computes SHA256 hash of bytes and returns as hex string.
+ *
+ * @param {Uint8Array} bytes - The bytes to hash
+ * @returns {string} - The SHA256 hash as hex string
+ */
+export function sha256Hex(bytes: Uint8Array): string {
+  const hash = createHash('sha256');
+  hash.update(bytes);
+  return hash.digest('hex');
 }

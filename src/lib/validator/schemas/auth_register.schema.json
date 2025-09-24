@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for idempotency"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "User name"
+    },
+    "accountId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Hedera account ID"
+    },
+    "publicKey": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Public key"
+    },
+    "role": {
+      "type": "string",
+      "enum": ["OPERATOR", "ADMIN"],
+      "description": "User role"
+    }
+  },
+  "required": ["messageId", "name", "accountId", "publicKey", "role"],
+  "additionalProperties": false
+}

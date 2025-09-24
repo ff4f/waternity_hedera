@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "wellId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "type": "string",
+      "enum": ["CERTIFICATE", "REPORT", "COMPLIANCE", "AUDIT", "CONTRACT", "OTHER"]
+    },
+    "cid": {
+      "type": "string"
+    },
+    "digestAlgo": {
+      "type": "string",
+      "enum": ["SHA256", "SHA512", "MD5"]
+    },
+    "digestHex": {
+      "type": "string",
+      "minLength": 1
+    },
+    "bundleContentBase64": {
+      "type": "string"
+    },
+    "filename": {
+      "type": "string"
+    },
+    "mimeType": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "anchoredBy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timestamp": {
+      "type": "string"
+    }
+  },
+  "required": ["messageId", "wellId", "type", "digestAlgo", "digestHex", "anchoredBy"],
+  "additionalProperties": false
+}

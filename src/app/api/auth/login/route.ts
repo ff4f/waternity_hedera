@@ -3,48 +3,48 @@ import { setSessionCookie } from '../../../../lib/auth/session';
 import { Role } from '../../../../lib/types';
 import { prisma } from '../../../../lib/prisma';
 import bcrypt from 'bcryptjs';
+import { withSchemaAndIdempotency } from '@/lib/validator/withSchemaAndIdempotency';
+import authLoginSchema from '@/lib/validator/schemas/auth_login.schema.json';
 
 interface LoginRequest {
   username: string;
   password: string;
 }
 
-export async function POST(request: NextRequest) {
+async function loginHandler(req: NextRequest, res: any, body: any): Promise<Response> {
   try {
-    const body: LoginRequest = await request.json();
-    
-    // Validate request body
-    if (!body.username || !body.password) {
-      return NextResponse.json(
-        { error: 'validation_error', message: 'Username and password are required' },
-        { status: 400 }
-      );
-    }
+    const { username, password } = body;
 
     // Find user by username
     const user = await prisma.user.findUnique({
-      where: { username: body.username }
+      where: { username }
     });
     
     if (!user) {
-      return NextResponse.json(
-        { error: 'invalid_credentials', message: 'Invalid username or password' },
-        { status: 401 }
-      );
+      return new Response(JSON.stringify({
+        error: 'invalid_credentials', 
+        message: 'Invalid username or password'
+      }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     // Verify password
-    const isValidPassword = await bcrypt.compare(body.password, user.password);
+    const isValidPassword = await bcrypt.compare(password, user.password);
     
     if (!isValidPassword) {
-      return NextResponse.json(
-        { error: 'invalid_credentials', message: 'Invalid username or password' },
-        { status: 401 }
-      );
+      return new Response(JSON.stringify({
+        error: 'invalid_credentials', 
+        message: 'Invalid username or password'
+      }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     // Create response with user data
-    const response = NextResponse.json({
+    const userData = {
       success: true,
       user: {
         id: user.id,
@@ -52,13 +52,15 @@ export async function POST(request: NextRequest) {
         username: user.username,
         role: user.role,
       },
-    });
+    };
+
+    const response = NextResponse.json(userData);
 
     // Set session cookie
     await setSessionCookie(response, {
       sub: user.id,
       name: user.name,
-      role: user.role,
+      role: user.role as Role,
     });
 
     return response;
@@ -66,11 +68,18 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Login error:', error);
     
-    return NextResponse.json(
-      { error: 'internal_error', message: 'An internal error occurred' },
-      { status: 500 }
-    );
+    return new Response(JSON.stringify({
+      error: 'internal_error', 
+      message: 'An internal error occurred'
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
+}
+
+export async function POST(request: NextRequest) {
+  return withSchemaAndIdempotency(authLoginSchema, loginHandler)(request);
 }
 
 // Handle unsupported methods

@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/db/prisma';
+import { getSessionFromRequest } from '@/lib/auth/session';
+import { Role } from '@/lib/types';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    // Require authentication for user data access
+    const authUser = await getSessionFromRequest(request);
+    if (!authUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
     const userId = params.id;
 
     const user = await prisma.user.findUnique({
@@ -55,7 +63,7 @@ export async function GET(
 
     // Calculate investment statistics
     const totalInvestment = user.memberships.reduce(
-      (sum, membership) => sum + (membership.shareBps / 100), // Convert basis points to percentage
+      (sum, membership) => sum + ((membership.shareBps || 0) / 100), // Convert basis points to percentage
       0
     );
 
@@ -109,7 +117,7 @@ export async function GET(
         });
 
         const userShare = totalWellShares._sum.shareBps 
-          ? (wellMembership.shareBps / totalWellShares._sum.shareBps)
+          ? ((wellMembership.shareBps || 0) / totalWellShares._sum.shareBps)
           : 0;
 
         const userPayoutAmount = payout.amount * userShare;
@@ -139,14 +147,14 @@ export async function GET(
       wellCode: membership.well.code,
       wellName: membership.well.name,
       location: membership.well.location,
-      sharePercentage: membership.shareBps / 100, // Convert basis points to percentage
-      investmentDate: membership.createdAt,
+      sharePercentage: (membership.shareBps || 0) / 100, // Convert basis points to percentage
+      investmentDate: new Date(), // Default date since createdAt not available on membership
       status: 'ACTIVE', // Default status since not in schema
       waterQuality: membership.well.waterQuality[0] ? {
         ph: membership.well.waterQuality[0].ph,
         tds: membership.well.waterQuality[0].tds,
         turbidity: membership.well.waterQuality[0].turbidity,
-        testDate: membership.well.waterQuality[0].testDate
+        testDate: membership.well.waterQuality[0].createdAt
       } : null,
       recentEvents: membership.well.events.map(event => ({
         id: event.id,
@@ -176,7 +184,7 @@ export async function GET(
         location: well.location,
         status: 'ACTIVE', // Default status since not in schema
         investorCount: well.memberships.length,
-        totalShares: well.memberships.reduce((sum, m) => sum + m.shareBps, 0),
+        totalShares: well.memberships.reduce((sum, m) => sum + (m.shareBps || 0), 0),
         recentEvents: well.events.map(event => ({
           id: event.id,
           type: event.type,

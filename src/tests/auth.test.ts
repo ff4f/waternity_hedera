@@ -121,7 +121,7 @@ describe('Authentication System Tests', () => {
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error).toBe('validation_error');
+      expect(data.error).toBe('Validation failed');
       expect(data.details).toBeDefined();
     });
   });
@@ -198,7 +198,7 @@ describe('Authentication System Tests', () => {
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error).toBe('validation_error');
+      expect(data.error).toBe('Validation failed');
     });
   });
 

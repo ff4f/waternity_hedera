@@ -13,23 +13,7 @@ interface WellPageProps {
   }
 }
 
-export async function generateStaticParams() {
-  // Return the static paths for the wells
-  return [
-    { id: '1' },
-    { id: '2' }
-  ]
-}
-
-export async function generateMetadata({ params }: WellPageProps): Promise<Metadata> {
-  // In a real app, you would fetch the well data here
-  const wellId = params.id
-  
-  return {
-    title: `Well ${wellId} - Waternity`,
-    description: `Detailed information and analytics for water well ${wellId}`,
-  }
-}
+// Note: generateStaticParams and generateMetadata removed due to 'use client' directive
 
 // Mock data for well details
 const mockWellData = {

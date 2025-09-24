@@ -1,0 +1,1061 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Waternity HCS Event Schemas",
+  "description": "JSON Schemas untuk HCS events dalam sistem Waternity untuk audit trail yang komprehensif",
+  "version": "1.0.0",
+  
+  "definitions": {
+    "baseEvent": {
+      "type": "object",
+      "required": ["messageId", "eventType", "timestamp", "triggeredBy", "entityId", "entityType"],
+      "properties": {
+        "messageId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "UUID v4 untuk idempotency - mencegah duplikasi event"
+        },
+        "eventType": {
+          "type": "string",
+          "description": "Tipe event yang terjadi"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu event terjadi (ISO 8601)"
+        },
+        "triggeredBy": {
+          "type": "string",
+          "pattern": "^0\\.0\\.[0-9]+$",
+          "description": "Hedera Account ID yang memicu event"
+        },
+        "entityId": {
+          "type": "string",
+          "description": "ID entitas yang terkait dengan event"
+        },
+        "entityType": {
+          "type": "string",
+          "enum": ["project", "well", "kiosk", "milestone", "investment", "settlement", "valve_control"],
+          "description": "Tipe entitas yang terkait"
+        },
+        "networkId": {
+          "type": "string",
+          "enum": ["mainnet", "testnet", "previewnet"],
+          "default": "testnet",
+          "description": "Hedera network yang digunakan"
+        },
+        "version": {
+          "type": "string",
+          "default": "1.0.0",
+          "description": "Versi schema event"
+        }
+      }
+    },
+    
+    "location": {
+      "type": "object",
+      "required": ["latitude", "longitude"],
+      "properties": {
+        "address": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        }
+      }
+    },
+    
+    "hederaTransaction": {
+      "type": "object",
+      "properties": {
+        "transactionId": {
+          "type": "string",
+          "description": "Hedera transaction ID"
+        },
+        "consensusTimestamp": {
+          "type": "string",
+          "description": "Consensus timestamp dari Hedera"
+        },
+        "hashscanUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL ke HashScan explorer"
+        }
+      }
+    }
+  },
+  
+  "events": {
+    "projectCreated": {
+      "allOf": [
+        {"$ref": "#/definitions/baseEvent"},
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "project_created"
+            },
+            "entityType": {
+              "const": "project"
+            },
+            "eventData": {
+              "type": "object",
+              "required": ["name", "fundingTarget", "location", "operatorAccountId"],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "description": "Nama proyek"
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "description": "Deskripsi proyek"
+                },
+                "fundingTarget": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Target funding dalam HBAR"
+                },
+                "location": {
+                  "$ref": "#/definitions/location"
+                },
+                "operatorAccountId": {
+                  "type": "string",
+                  "pattern": "^0\\.0\\.[0-9]+$",
+                  "description": "Account ID operator proyek"
+                },
+                "targetCompletion": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Target tanggal penyelesaian"
+                },
+                "tokenSymbol": {
+                  "type": "string",
+                  "maxLength": 10,
+                  "description": "Symbol token HTS (opsional)"
+                },
+                "tokenName": {
+                  "type": "string",
+                  "maxLength": 50,
+                  "description": "Nama token HTS (opsional)"
+                }
+              }
+            },
+            "hederaData": {
+              "$ref": "#/definitions/hederaTransaction"
+            }
+          }
+        }
+      ]
+    },
+    
+    "projectUpdated": {
+      "allOf": [
+        {"$ref": "#/definitions/baseEvent"},
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "project_updated"
+            },
+            "entityType": {
+              "const": "project"
+            },
+            "eventData": {
+              "type": "object",
+              "required": ["changes"],
+              "properties": {
+                "changes": {
+                  "type": "object",
+                  "description": "Field yang berubah dengan nilai lama dan baru",
+                  "patternProperties": {
+                    ".*": {
+                      "type": "object",
+                      "properties": {
+                        "from": {"description": "Nilai lama"},
+                        "to": {"description": "Nilai baru"}
+                      }
+                    }
+                  }
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 200,
+                  "description": "Alasan perubahan"
+                }
+              }
+            },
+            "hederaData": {
+              "$ref": "#/definitions/hederaTransaction"
+            }
+          }
+        }
+      ]
+    },
+    
+    "investmentMade": {
+      "allOf": [
+        {"$ref": "#/definitions/baseEvent"},
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "investment_made"
+            },
+            "entityType": {
+              "const": "investment"
+            },
+            "eventData": {
+              "type": "object",
+              "required": ["projectId", "investorAccountId", "amountHbar"],
+              "properties": {
+                "projectId": {
+                  "type": "string",
+                  "description": "ID proyek yang diinvestasi"
+                },
+                "investorAccountId": {
+                  "type": "string",
+                  "pattern": "^0\\.0\\.[0-9]+$",
+                  "description": "Account ID investor"
+                },
+                "amountHbar": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Jumlah investasi dalam HBAR"
+                },
+                "tokenAmount": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Jumlah token yang diterima"
+                },
+                "tokenPrice": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Harga per token dalam HBAR"
+                },
+                "htsTokenId": {
+                  "type": "string",
+                  "description": "ID token HTS yang diterima"
+                }
+              }
+            },
+            "hederaData": {
+              "allOf": [
+                {"$ref": "#/definitions/hederaTransaction"},
+                {
+                  "type": "object",
+                  "properties": {
+                    "htsTransactionId": {
+                      "type": "string",
+                      "description": "Transaction ID untuk transfer token HTS"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    
+    "milestoneCreated": {
+      "allOf": [
+        {"$ref": "#/definitions/baseEvent"},
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "milestone_created"
+            },
+            "entityType": {
+              "const": "milestone"
+            },
+            "eventData": {
+              "type": "object",
+              "required": ["projectId", "name", "percentage"],
+              "properties": {
+                "projectId": {
+                  "type": "string",
+                  "description": "ID proyek terkait"
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "description": "Nama milestone"
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 500,
+                  "description": "Deskripsi milestone"
+                },
+                "percentage": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100,
+                  "description": "Persentase completion proyek"
+                },
+                "targetDate": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Target tanggal penyelesaian"
+                },
+                "verificationMethod": {
+                  "type": "string",
+                  "enum": ["qr_code", "document", "inspection"],
+                  "description": "Metode verifikasi milestone"
+                },
+                "qrCodeData": {
+                  "type": "string",
+                  "description": "Data QR code untuk verifikasi"
+                }
+              }
+            },
+            "hederaData": {
+              "$ref": "#/definitions/hederaTransaction"
+            }
+          }
+        }
+      ]
+    },
+    
+    "milestoneVerified": {
+      "allOf": [
+        {"$ref": "#/definitions/baseEvent"},
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "milestone_verified"
+            },
+            "entityType": {
+              "const": "milestone"
+            },
+            "eventData": {
+              "type": "object",
+              "required": ["milestoneId", "agentAccountId", "verificationMethod"],
+              "properties": {
+                "milestoneId": {
+                  "type": "string",
+                  "description": "ID milestone yang diverifikasi"
+                },
+                "projectId": {
+                  "type": "string",
+                  "description": "ID proyek terkait"
+                },
+                "agentAccountId": {
+                  "type": "string",
+                  "pattern": "^0\\.0\\.[0-9]+$",
+                  "description": "Account ID agent yang melakukan verifikasi"
+                },
+                "verificationMethod": {
+                  "type": "string",
+                  "enum": ["qr_code", "document", "inspection"]
+                },
+                "qrCodeData": {
+                  "type": "string",
+                  "description": "Data QR code yang di-scan"
+                },
+                "verificationNotes": {
+                  "type": "string",
+                  "maxLength": 500,
+                  "description": "Catatan verifikasi"
+                },
+                "evidenceFiles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "File bukti verifikasi (HFS file IDs)"
+                },
+                "location": {
+                  "$ref": "#/definitions/location",
+                  "description": "Lokasi verifikasi"
+                },
+                "completionPercentage": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100,
+                  "description": "Persentase penyelesaian aktual"
+                }
+              }
+            },
+            "hederaData": {
+              "$ref": "#/definitions/hederaTransaction"
+            }
+          }
+        }
+      ]
+    },
+    
+    "wellCreated": {
+      "allOf": [
+        {"$ref": "#/definitions/baseEvent"},
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "well_created"
+            },
+            "entityType": {
+              "const": "well"
+            },
+            "eventData": {
+              "type": "object",
+              "required": ["name", "location", "depthMeters", "capacityLitersPerHour"],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "description": "Nama well"
+                },
+                "location": {
+                  "$ref": "#/definitions/location"
+                },
+                "depthMeters": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Kedalaman well dalam meter"
+                },
+                "capacityLitersPerHour": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Kapasitas produksi per jam dalam liter"
+                },
+                "operatorAccountId": {
+                  "type": "string",
+                  "pattern": "^0\\.0\\.[0-9]+$",
+                  "description": "Account ID operator well"
+                },
+                "projectId": {
+                  "type": "string",
+                  "description": "ID proyek terkait (jika ada)"
+                }
+              }
+            },
+            "hederaData": {
+              "$ref": "#/definitions/hederaTransaction"
+            }
+          }
+        }
+      ]
+    },
+    
+    "kioskCreated": {
+      "allOf": [
+        {"$ref": "#/definitions/baseEvent"},
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "kiosk_created"
+            },
+            "entityType": {
+              "const": "kiosk"
+            },
+            "eventData": {
+              "type": "object",
+              "required": ["wellId", "name", "location"],
+              "properties": {
+                "wellId": {
+                  "type": "string",
+                  "description": "ID well yang terkait"
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "description": "Nama kiosk"
+                },
+                "location": {
+                  "$ref": "#/definitions/location"
+                },
+                "valveControllerId": {
+                  "type": "string",
+                  "description": "ID controller valve"
+                },
+                "operatorAccountId": {
+                  "type": "string",
+                  "pattern": "^0\\.0\\.[0-9]+$",
+                  "description": "Account ID operator kiosk"
+                }
+              }
+            },
+            "hederaData": {
+              "$ref": "#/definitions/hederaTransaction"
+            }
+          }
+        }
+      ]
+    },
+    
+    "valveControlled": {
+      "allOf": [
+        {"$ref": "#/definitions/baseEvent"},
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "valve_controlled"
+            },
+            "entityType": {
+              "const": "valve_control"
+            },
+            "eventData": {
+              "type": "object",
+              "required": ["kioskId", "action", "agentAccountId"],
+              "properties": {
+                "kioskId": {
+                  "type": "string",
+                  "description": "ID kiosk yang dikontrol"
+                },
+                "wellId": {
+                  "type": "string",
+                  "description": "ID well terkait"
+                },
+                "action": {
+                  "type": "string",
+                  "enum": ["open", "close", "restrict"],
+                  "description": "Aksi yang dilakukan pada valve"
+                },
+                "agentAccountId": {
+                  "type": "string",
+                  "pattern": "^0\\.0\\.[0-9]+$",
+                  "description": "Account ID agent yang melakukan kontrol"
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 200,
+                  "description": "Alasan kontrol valve"
+                },
+                "restrictionLevel": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100,
+                  "description": "Level pembatasan (0=tutup, 100=buka penuh)"
+                },
+                "previousState": {
+                  "type": "string",
+                  "enum": ["open", "closed", "restricted"],
+                  "description": "Status valve sebelumnya"
+                },
+                "newState": {
+                  "type": "string",
+                  "enum": ["open", "closed", "restricted"],
+                  "description": "Status valve setelah kontrol"
+                },
+                "executionStatus": {
+                  "type": "string",
+                  "enum": ["executed", "failed", "pending"],
+                  "description": "Status eksekusi kontrol"
+                },
+                "errorMessage": {
+                  "type": "string",
+                  "description": "Pesan error jika eksekusi gagal"
+                }
+              }
+            },
+            "hederaData": {
+              "$ref": "#/definitions/hederaTransaction"
+            }
+          }
+        }
+      ]
+    },
+    
+    "waterUsageRecorded": {
+      "allOf": [
+        {"$ref": "#/definitions/baseEvent"},
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "water_usage_recorded"
+            },
+            "entityType": {
+              "const": "kiosk"
+            },
+            "eventData": {
+              "type": "object",
+              "required": ["kioskId", "litersDispensed", "amountPaidHbar"],
+              "properties": {
+                "kioskId": {
+                  "type": "string",
+                  "description": "ID kiosk tempat penggunaan"
+                },
+                "wellId": {
+                  "type": "string",
+                  "description": "ID well terkait"
+                },
+                "customerAccountId": {
+                  "type": "string",
+                  "pattern": "^0\\.0\\.[0-9]+$",
+                  "description": "Account ID customer (opsional)"
+                },
+                "litersDispensed": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Jumlah air yang dikeluarkan dalam liter"
+                },
+                "amountPaidHbar": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Jumlah pembayaran dalam HBAR"
+                },
+                "pricePerLiter": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Harga per liter dalam HBAR"
+                },
+                "paymentMethod": {
+                  "type": "string",
+                  "enum": ["hbar", "token", "cash", "mobile_payment"],
+                  "description": "Metode pembayaran"
+                },
+                "paymentTransactionId": {
+                  "type": "string",
+                  "description": "Transaction ID pembayaran Hedera"
+                },
+                "meterReading": {
+                  "type": "object",
+                  "properties": {
+                    "before": {
+                      "type": "number",
+                      "description": "Pembacaan meter sebelum dispensing"
+                    },
+                    "after": {
+                      "type": "number",
+                      "description": "Pembacaan meter setelah dispensing"
+                    }
+                  }
+                }
+              }
+            },
+            "hederaData": {
+              "$ref": "#/definitions/hederaTransaction"
+            }
+          }
+        }
+      ]
+    },
+    
+    "settlementCalculated": {
+      "allOf": [
+        {"$ref": "#/definitions/baseEvent"},
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "settlement_calculated"
+            },
+            "entityType": {
+              "const": "settlement"
+            },
+            "eventData": {
+              "type": "object",
+              "required": ["wellId", "periodStart", "periodEnd", "totalRevenueHbar"],
+              "properties": {
+                "wellId": {
+                  "type": "string",
+                  "description": "ID well untuk settlement"
+                },
+                "periodStart": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Awal periode settlement"
+                },
+                "periodEnd": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Akhir periode settlement"
+                },
+                "totalRevenueHbar": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Total revenue dalam HBAR"
+                },
+                "totalLitersDispensed": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Total liter air yang terjual"
+                },
+                "transactionCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Jumlah transaksi dalam periode"
+                },
+                "breakdown": {
+                  "type": "object",
+                  "required": ["operatorShare", "investorShare"],
+                  "properties": {
+                    "operatorShare": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "Bagian operator dalam HBAR"
+                    },
+                    "investorShare": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "Bagian investor dalam HBAR"
+                    },
+                    "maintenanceFund": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "Dana maintenance dalam HBAR"
+                    },
+                    "platformFee": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "Fee platform dalam HBAR"
+                    }
+                  }
+                },
+                "calculatedBy": {
+                  "type": "string",
+                  "pattern": "^0\\.0\\.[0-9]+$",
+                  "description": "Account ID yang menghitung settlement"
+                }
+              }
+            },
+            "hederaData": {
+              "$ref": "#/definitions/hederaTransaction"
+            }
+          }
+        }
+      ]
+    },
+    
+    "settlementProcessed": {
+      "allOf": [
+        {"$ref": "#/definitions/baseEvent"},
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "settlement_processed"
+            },
+            "entityType": {
+              "const": "settlement"
+            },
+            "eventData": {
+              "type": "object",
+              "required": ["settlementId", "totalDistributed", "distributionStatus"],
+              "properties": {
+                "settlementId": {
+                  "type": "string",
+                  "description": "ID settlement yang diproses"
+                },
+                "wellId": {
+                  "type": "string",
+                  "description": "ID well terkait"
+                },
+                "totalDistributed": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Total HBAR yang didistribusikan"
+                },
+                "distributionStatus": {
+                  "type": "string",
+                  "enum": ["completed", "partial", "failed"],
+                  "description": "Status distribusi"
+                },
+                "recipientCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Jumlah penerima distribusi"
+                },
+                "failedDistributions": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Jumlah distribusi yang gagal"
+                },
+                "distributions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["accountId", "amountHbar", "status"],
+                    "properties": {
+                      "accountId": {
+                        "type": "string",
+                        "pattern": "^0\\.0\\.[0-9]+$",
+                        "description": "Account ID penerima"
+                      },
+                      "amountHbar": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "Jumlah HBAR yang diterima"
+                      },
+                      "tokenAmount": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "Jumlah token yang dimiliki"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": ["success", "failed", "pending"],
+                        "description": "Status distribusi individual"
+                      },
+                      "transactionId": {
+                        "type": "string",
+                        "description": "Transaction ID distribusi"
+                      }
+                    }
+                  }
+                },
+                "processedBy": {
+                  "type": "string",
+                  "pattern": "^0\\.0\\.[0-9]+$",
+                  "description": "Account ID yang memproses settlement"
+                }
+              }
+            },
+            "hederaData": {
+              "allOf": [
+                {"$ref": "#/definitions/hederaTransaction"},
+                {
+                  "type": "object",
+                  "properties": {
+                    "htsDistributionTxId": {
+                      "type": "string",
+                      "description": "Transaction ID untuk distribusi HTS"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    
+    "documentAnchored": {
+      "allOf": [
+        {"$ref": "#/definitions/baseEvent"},
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "document_anchored"
+            },
+            "eventData": {
+              "type": "object",
+              "required": ["documentType", "hfsFileId", "documentHash"],
+              "properties": {
+                "documentType": {
+                  "type": "string",
+                  "enum": ["milestone_evidence", "audit_report", "settlement_report", "project_document", "compliance_certificate"],
+                  "description": "Tipe dokumen yang di-anchor"
+                },
+                "hfsFileId": {
+                  "type": "string",
+                  "description": "File ID di Hedera File Service"
+                },
+                "documentHash": {
+                  "type": "string",
+                  "pattern": "^[a-fA-F0-9]{64}$",
+                  "description": "SHA-256 hash dokumen untuk verifikasi integritas"
+                },
+                "fileName": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "description": "Nama file asli"
+                },
+                "fileSize": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Ukuran file dalam bytes"
+                },
+                "mimeType": {
+                  "type": "string",
+                  "description": "MIME type dokumen"
+                },
+                "relatedEntityId": {
+                  "type": "string",
+                  "description": "ID entitas terkait (project, milestone, dll)"
+                },
+                "uploadedBy": {
+                  "type": "string",
+                  "pattern": "^0\\.0\\.[0-9]+$",
+                  "description": "Account ID yang mengupload dokumen"
+                }
+              }
+            },
+            "hederaData": {
+              "allOf": [
+                {"$ref": "#/definitions/hederaTransaction"},
+                {
+                  "type": "object",
+                  "properties": {
+                    "hfsTransactionId": {
+                      "type": "string",
+                      "description": "Transaction ID untuk HFS file creation"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    
+    "systemAlert": {
+      "allOf": [
+        {"$ref": "#/definitions/baseEvent"},
+        {
+          "type": "object",
+          "properties": {
+            "eventType": {
+              "const": "system_alert"
+            },
+            "eventData": {
+              "type": "object",
+              "required": ["alertType", "severity", "message"],
+              "properties": {
+                "alertType": {
+                  "type": "string",
+                  "enum": ["valve_malfunction", "low_water_level", "payment_failure", "maintenance_required", "security_breach", "network_issue"],
+                  "description": "Tipe alert sistem"
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": ["low", "medium", "high", "critical"],
+                  "description": "Tingkat keparahan alert"
+                },
+                "message": {
+                  "type": "string",
+                  "maxLength": 500,
+                  "description": "Pesan alert"
+                },
+                "affectedEntities": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "entityId": {
+                        "type": "string"
+                      },
+                      "entityType": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "description": "Entitas yang terdampak alert"
+                },
+                "autoResolved": {
+                  "type": "boolean",
+                  "description": "Apakah alert dapat diselesaikan otomatis"
+                },
+                "resolutionSteps": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Langkah-langkah penyelesaian"
+                }
+              }
+            },
+            "hederaData": {
+              "$ref": "#/definitions/hederaTransaction"
+            }
+          }
+        }
+      ]
+    }
+  },
+  
+  "examples": {
+    "projectCreatedExample": {
+      "messageId": "550e8400-e29b-41d4-a716-446655440000",
+      "eventType": "project_created",
+      "timestamp": "2024-01-15T10:30:00Z",
+      "triggeredBy": "0.0.12345",
+      "entityId": "proj_001",
+      "entityType": "project",
+      "networkId": "testnet",
+      "version": "1.0.0",
+      "eventData": {
+        "name": "Sumur Air Bersih Desa Makmur",
+        "description": "Proyek pembangunan sumur air bersih untuk 500 keluarga di Desa Makmur",
+        "fundingTarget": 10000,
+        "location": {
+          "address": "Desa Makmur, Kecamatan Sejahtera, Kabupaten Maju",
+          "latitude": -6.2088,
+          "longitude": 106.8456
+        },
+        "operatorAccountId": "0.0.12345",
+        "targetCompletion": "2024-06-30",
+        "tokenSymbol": "WATER01",
+        "tokenName": "Desa Makmur Water Token"
+      },
+      "hederaData": {
+        "transactionId": "0.0.12345@1705315800.123456789",
+        "consensusTimestamp": "1705315800.123456789",
+        "hashscanUrl": "https://hashscan.io/testnet/transaction/0.0.12345@1705315800.123456789"
+      }
+    },
+    
+    "milestoneVerifiedExample": {
+      "messageId": "550e8400-e29b-41d4-a716-446655440001",
+      "eventType": "milestone_verified",
+      "timestamp": "2024-02-15T14:45:00Z",
+      "triggeredBy": "0.0.67890",
+      "entityId": "milestone_001",
+      "entityType": "milestone",
+      "networkId": "testnet",
+      "version": "1.0.0",
+      "eventData": {
+        "milestoneId": "milestone_001",
+        "projectId": "proj_001",
+        "agentAccountId": "0.0.67890",
+        "verificationMethod": "qr_code",
+        "qrCodeData": "WTRNTY_MS001_20240215_VERIFIED",
+        "verificationNotes": "Pengeboran sumur telah selesai dengan kedalaman 45 meter. Kualitas air telah diuji dan memenuhi standar.",
+        "evidenceFiles": ["0.0.98765", "0.0.98766"],
+        "location": {
+          "latitude": -6.2088,
+          "longitude": 106.8456
+        },
+        "completionPercentage": 25
+      },
+      "hederaData": {
+        "transactionId": "0.0.67890@1708006700.987654321",
+        "consensusTimestamp": "1708006700.987654321",
+        "hashscanUrl": "https://hashscan.io/testnet/transaction/0.0.67890@1708006700.987654321"
+      }
+    },
+    
+    "valveControlledExample": {
+      "messageId": "550e8400-e29b-41d4-a716-446655440002",
+      "eventType": "valve_controlled",
+      "timestamp": "2024-03-15T09:15:00Z",
+      "triggeredBy": "0.0.11111",
+      "entityId": "valve_ctrl_001",
+      "entityType": "valve_control",
+      "networkId": "testnet",
+      "version": "1.0.0",
+      "eventData": {
+        "kioskId": "kiosk_001",
+        "wellId": "well_001",
+        "action": "restrict",
+        "agentAccountId": "0.0.11111",
+        "reason": "Maintenance scheduled - reducing flow for safety",
+        "restrictionLevel": 50,
+        "previousState": "open",
+        "newState": "restricted",
+        "executionStatus": "executed"
+      },
+      "hederaData": {
+        "transactionId": "0.0.11111@1710489300.555666777",
+        "consensusTimestamp": "1710489300.555666777",
+        "hashscanUrl": "https://hashscan.io/testnet/transaction/0.0.11111@1710489300.555666777"
+      }
+    }
+  }
+}

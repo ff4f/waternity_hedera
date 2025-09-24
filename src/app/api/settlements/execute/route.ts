@@ -2,140 +2,197 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { submitMessage } from "@/lib/hedera/hcs";
 import { ensureFtForWell, transferPayouts } from "@/lib/hedera/hts";
-import { withSchema, getParsedBody, getIdempotencyKey } from "@/lib/validator/withSchema";
-import { withIdempotency } from "@/lib/validator/idempotency";
+import { calcPayouts } from "@/lib/settlement/calc";
+import { withSchema } from "@/lib/validator/withSchema";
+import { ensureIdempotent } from "@/lib/validator/idempotency";
+import { requireAgent } from "@/lib/auth/roles";
+import { Role } from "@/lib/types";
 
 interface SettlementExecuteBody {
   messageId: string;
   settlementId: string;
   executedBy: string;
   timestamp: string;
+  assetType?: "HBAR" | "TOKEN"; // Optional, defaults to TOKEN
 }
 
-async function handlePOST(request: NextRequest) {
+async function handlePOST(request: NextRequest, context: any, body: SettlementExecuteBody): Promise<Response> {
   try {
-    const body: SettlementExecuteBody = getParsedBody(request);
-    const idempotencyKey = getIdempotencyKey(request);
-    
-    // Check idempotency
-    const idempotencyResult = await withIdempotency(
-      idempotencyKey!,
-      "settlements_execute",
+    // Require AGENT role for settlement execution
+    const user = await requireAgent(request);
+    const result = await ensureIdempotent(
+      body.messageId,
+      "/api/settlements/execute",
       async () => {
-        // Get settlement with payouts
-        const settlement = await prisma.settlement.findUnique({
-          where: { id: body.settlementId },
-          include: {
-            payouts: true,
-            well: true,
-          },
-        });
+    // Get settlement
+    const settlement = await prisma.settlement.findUnique({
+      where: { id: body.settlementId },
+      include: {
+        well: true,
+      },
+    });
 
-        if (!settlement) {
-          throw new Error(`Settlement ${body.settlementId} not found`);
-        }
-
-        if (settlement.status !== "APPROVED") {
-          throw new Error(
-            `Settlement ${body.settlementId} is not in APPROVED status (current: ${settlement.status})`
-          );
-        }
-
-        // Check if payouts exist
-        if (!settlement.payouts || settlement.payouts.length === 0) {
-          throw new Error(
-            `No payouts found for settlement ${body.settlementId}. Settlement must be approved first.`
-          );
-        }
-
-        // Ensure token exists for the well (if needed)
-        const tokenInfo = await ensureFtForWell(settlement.wellId);
-
-        // Prepare payouts for transfer
-        const payoutsForTransfer = settlement.payouts.map((payout) => ({
-          account: payout.recipientAccount,
-          amount: Number(payout.amount),
-        }));
-
-        // Execute transfers
-        const transferResult = await transferPayouts({
-          assetType: "HBAR", // Default to HBAR for now
-          recipients: payoutsForTransfer,
-        });
-
-        // Update payout statuses
-        await Promise.all(
-          settlement.payouts.map((payout) =>
-            prisma.payout.update({
-              where: { id: payout.id },
-              data: {
-                status: "COMPLETED",
-              },
-            })
-          )
-        );
-
-        // Update settlement status
-        await prisma.settlement.update({
-          where: { id: settlement.id },
-          data: {
-            status: "EXECUTED",
-          },
-        });
-
-        // Prepare HCS message
-        const hcsMessage = {
-          type: "SETTLEMENT_EXECUTED",
-          payload: {
-            settlementId: body.settlementId,
-            executedBy: body.executedBy,
-            timestamp: body.timestamp,
-            transactionId: transferResult[0]?.txId || "",
-            payouts: payoutsForTransfer.map(p => ({
-              recipientAccount: p.account,
-              amount: p.amount,
-            })),
-          },
-        };
-
-        // Submit to HCS
-        const { messageId } = await submitMessage(settlement.wellId, hcsMessage);
-
-        // Update settlement with HCS event reference
-        await prisma.settlement.update({
-          where: { id: body.settlementId },
-          data: { executeEventId: messageId },
-        });
-
-        return {
-          settlement: settlement,
-          transactionId: transferResult[0]?.txId || "",
-          payouts: settlement.payouts.length,
-        };
-      }
-    );
-
-    if (idempotencyResult.isExisting) {
-      return NextResponse.json(idempotencyResult.result, { status: 200 });
+    if (!settlement) {
+      throw new Error(`Settlement ${body.settlementId} not found`);
     }
 
-    return NextResponse.json(idempotencyResult.result, { status: 200 });
-    
-  } catch (error) {
-    console.error("Settlement execute error:", error);
-    
-    if (error instanceof Error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 400 }
+    if (settlement.status !== "APPROVED") {
+      throw new Error(
+        `Settlement ${body.settlementId} is not in APPROVED status (current: ${settlement.status})`
       );
     }
+
+    // Compute recipients via calcPayouts
+    const recipients = await calcPayouts({
+      wellId: settlement.wellId,
+      grossRevenue: settlement.grossRevenue || 0,
+    });
+
+    if (recipients.length === 0) {
+      throw new Error("No valid recipients found for settlement");
+    }
+
+    // Determine asset type (default to TOKEN)
+    const assetType = body.assetType || "TOKEN";
+    let tokenId: string | undefined;
+    let transferResults: { account: string; txId: string }[];
+
+    if (assetType === "TOKEN") {
+      // Ensure FT exists for well
+      const token = await ensureFtForWell(settlement.wellId);
+      tokenId = token.tokenId;
+
+      // Execute token transfers
+      transferResults = await transferPayouts({
+        assetType: "TOKEN",
+        tokenId,
+        recipients,
+      });
+    } else {
+      // Execute HBAR transfers
+      transferResults = await transferPayouts({
+        assetType: "HBAR",
+        recipients,
+      });
+    }
+
+    // Update settlement and upsert payout records
+    const updatedSettlement = await prisma.$transaction(async (tx) => {
+      // Update settlement
+      const updated = await tx.settlement.update({
+        where: { id: body.settlementId },
+        data: {
+          status: "EXECUTED",
+          executeEventId: body.messageId,
+        },
+      });
+
+      // Upsert payout records (unique by settlementId+recipient+assetType)
+      for (const recipient of recipients) {
+        const transferResult = transferResults.find(r => r.account === recipient.account);
+        
+        await tx.payout.upsert({
+          where: {
+            settlementId_recipientAccount_assetType: {
+              settlementId: body.settlementId,
+              recipientAccount: recipient.account,
+              assetType,
+            },
+          },
+          update: {
+            amount: recipient.amount,
+            tokenId,
+            txId: transferResult?.txId,
+            status: "COMPLETED",
+          },
+          create: {
+            settlementId: body.settlementId,
+            recipientAccount: recipient.account,
+            assetType,
+            amount: recipient.amount,
+            tokenId,
+            txId: transferResult?.txId,
+            status: "COMPLETED",
+          },
+        });
+      }
+
+      return updated;
+    });
+
+    // Emit two HCS events as required
     
+    // 1. PAYOUT_DISTRIBUTED event with recipients array
+    await submitMessage(settlement.wellId, {
+      type: "PAYOUT_DISTRIBUTED",
+      payload: {
+        settlementId: body.settlementId,
+        assetType,
+        tokenId,
+        recipients: recipients.map(r => ({
+          account: r.account,
+          amount: r.amount,
+        })),
+        transferResults,
+        timestamp: body.timestamp,
+      },
+    });
+
+    // 2. SETTLEMENT_EXECUTED event
+    await submitMessage(settlement.wellId, {
+      type: "SETTLEMENT_EXECUTED",
+      payload: {
+        settlementId: body.settlementId,
+        executedBy: body.executedBy,
+        timestamp: body.timestamp,
+        assetType,
+        tokenId,
+        totalAmount: recipients.reduce((sum, r) => sum + r.amount, 0),
+        recipientCount: recipients.length,
+      },
+    });
+
+    return {
+      settlement: updatedSettlement,
+      assetType,
+      tokenId,
+      recipients,
+      transferResults,
+    };
+      }
+    );
+  
+  return NextResponse.json(result);
+  } catch (error) {
+    console.error('Settlement execute error:', error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: 'internal_server_error', details: [error instanceof Error ? error.message : 'An unexpected error occurred'] },
       { status: 500 }
     );
   }
 }
 
-export const POST = withSchema('settlement_execute.schema.json', handlePOST);
+// Simple schema for now
+const settlementExecuteSchema = {
+  type: "object",
+  properties: {
+    messageId: { type: "string" },
+    settlementId: { type: "string" },
+    executedBy: { type: "string" },
+    timestamp: { type: "string" }
+  },
+  required: ["messageId", "settlementId", "executedBy", "timestamp"],
+  additionalProperties: false
+};
+
+export const POST = withSchema(settlementExecuteSchema, handlePOST);
+export const OPTIONS = async () => {
+  return new Response(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  });
+};

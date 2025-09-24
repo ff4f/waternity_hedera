@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { withSchema } from "@/lib/validator/withSchema";
-import { ensureIdempotent } from "@/lib/validator/idempotency";
+import { withSchemaAndIdempotency } from "@/lib/validator/withSchemaAndIdempotency";
+import settlementRequestSchema from "@/lib/validator/schemas/settlement_request.schema.json";
 import { 
   TransferTransaction,
-  TokenTransferTransaction,
   TokenId,
   AccountId,
   Hbar
@@ -41,7 +40,7 @@ async function createSettlement({
   
   if (tokenId && amount) {
     // Token transfer
-    transaction = new TokenTransferTransaction()
+    transaction = new TransferTransaction()
       .addTokenTransfer(TokenId.fromString(tokenId), AccountId.fromString(fromAccountId), -amount)
       .addTokenTransfer(TokenId.fromString(tokenId), AccountId.fromString(toAccountId), amount)
       .setMaxTransactionFee(new Hbar(20));
@@ -65,8 +64,7 @@ async function createSettlement({
   };
 }
 
-async function createSettlementHandler(req: NextRequest, context?: any) {
-  const body = await req.json();
+async function createSettlementHandler(req: NextRequest, res: any, body: any): Promise<Response> {
   const { 
     wellId, 
     buyerAccountId, 
@@ -93,73 +91,58 @@ async function createSettlementHandler(req: NextRequest, context?: any) {
 
   const totalPrice = waterAmount * pricePerLiter;
 
-  const result = await ensureIdempotent(
-    idempotencyKey,
-    'settlement_create',
-    async () => {
-      // Create settlement record in database
-      const settlement = await prisma.settlement.create({
-        data: {
-          wellId,
-          buyerAccountId,
-          sellerAccountId: sellerAccountId || well.operator.accountId,
-          waterAmount,
-          pricePerLiter,
-          totalPrice,
-          paymentMethod,
-          status: 'PENDING'
-        }
-      });
-
-      // Execute the settlement transaction
-      let settlementResult;
-      if (paymentMethod === 'TOKEN' && well.tokenId) {
-        settlementResult = await createSettlement({
-          fromAccountId: buyerAccountId,
-          toAccountId: sellerAccountId || well.operator.accountId,
-          tokenId: well.tokenId,
-          amount: waterAmount
-        });
-      } else {
-        settlementResult = await createSettlement({
-          fromAccountId: buyerAccountId,
-          toAccountId: sellerAccountId || well.operator.accountId,
-          hbarAmount: totalPrice
-        });
-      }
-
-      // Update settlement with transaction details
-      const updatedSettlement = await prisma.settlement.update({
-        where: { id: settlement.id },
-        data: {
-          transactionId: settlementResult.transactionId,
-          status: settlementResult.status === 'SUCCESS' ? 'COMPLETED' : 'FAILED'
-        }
-      });
-
-      return {
-        settlement: updatedSettlement,
-        transaction: settlementResult
-      };
+  // Create settlement record in database
+  const settlement = await prisma.settlement.create({
+    data: {
+      wellId,
+      buyerAccountId,
+      sellerAccountId: sellerAccountId || well.operator.accountId,
+      waterAmount,
+      pricePerLiter,
+      totalPrice,
+      paymentMethod,
+      status: 'PENDING'
     }
-  );
+  });
 
-  if (result.isNew) {
-    return NextResponse.json(result.result, {
-      status: 201,
-      headers: { "Content-Type": "application/json" },
+  // Execute the settlement transaction
+  let settlementResult;
+  if (paymentMethod === 'TOKEN' && well.tokenId) {
+    settlementResult = await createSettlement({
+      fromAccountId: buyerAccountId,
+      toAccountId: sellerAccountId || well.operator.accountId,
+      tokenId: well.tokenId,
+      amount: waterAmount
     });
   } else {
-    return NextResponse.json({ message: "Settlement already processed", resultHash: result.resultHash }, {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
+    settlementResult = await createSettlement({
+      fromAccountId: buyerAccountId,
+      toAccountId: sellerAccountId || well.operator.accountId,
+      hbarAmount: totalPrice
     });
   }
+
+  // Update settlement with transaction details
+  const updatedSettlement = await prisma.settlement.update({
+    where: { id: settlement.id },
+    data: {
+      transactionId: settlementResult.transactionId,
+      status: settlementResult.status === 'SUCCESS' ? 'COMPLETED' : 'FAILED'
+    }
+  });
+
+  return new Response(JSON.stringify({
+    settlement: updatedSettlement,
+    transaction: settlementResult
+  }), {
+    status: 201,
+    headers: { "Content-Type": "application/json" }
+  });
 }
 
 async function getSettlementsHandler(req: NextRequest, context?: any) {
   const url = new URL(req.url);
-  const wellId = url.searchParams.get('wellId');
+  const wellCode = url.searchParams.get('wellId'); // This is actually well code
   const buyerAccountId = url.searchParams.get('buyerAccountId');
   const sellerAccountId = url.searchParams.get('sellerAccountId');
   const status = url.searchParams.get('status');
@@ -167,7 +150,28 @@ async function getSettlementsHandler(req: NextRequest, context?: any) {
   const offset = parseInt(url.searchParams.get('offset') || '0');
 
   const where: any = {};
-  if (wellId) where.wellId = wellId;
+  
+  // If wellCode is provided, find the well by code first
+  if (wellCode) {
+    const well = await prisma.well.findUnique({
+      where: { code: wellCode }
+    });
+    if (well) {
+      where.wellId = well.id;
+    } else {
+      // If well not found, return empty results
+      return NextResponse.json({
+        settlements: [],
+        pagination: {
+          total: 0,
+          limit,
+          offset,
+          hasMore: false
+        }
+      });
+    }
+  }
+  
   if (buyerAccountId) where.buyerAccountId = buyerAccountId;
   if (sellerAccountId) where.sellerAccountId = sellerAccountId;
   if (status) where.status = status;
@@ -202,7 +206,7 @@ async function getSettlementsHandler(req: NextRequest, context?: any) {
 
 // Handle different HTTP methods
 export async function POST(req: NextRequest) {
-  return withSchema('settlement_create.schema.json', createSettlementHandler)(req);
+  return withSchemaAndIdempotency(settlementRequestSchema, createSettlementHandler)(req);
 }
 
 export async function GET(req: NextRequest) {

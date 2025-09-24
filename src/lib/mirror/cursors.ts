@@ -1,71 +1,108 @@
 import { prisma } from "@/lib/db/prisma";
 
 /**
- * Cursor management for Mirror Node sync
+ * Cursor management for Mirror Node sync using MirrorCursor model
  * Tracks the last consensusTime processed per topic to enable incremental sync
  */
 
-interface TopicCursor {
-  topicId: string;
-  lastConsensusTime: string;
-  lastSequenceNumber?: bigint;
-  updatedAt: Date;
-}
-
 /**
- * Get the last cursor for a topic
+ * Get the cursor for a topic from MirrorCursor table
  * @param topicId - The Hedera topic ID
  * @returns The last consensus timestamp or null if no cursor exists
  */
-export async function getTopicCursor(topicId: string): Promise<string | null> {
-  try {
-    // First try to get from the most recent HcsEvent for this topic
-    const lastEvent = await prisma.hcsEvent.findFirst({
-      where: {
-        well: {
-          topicId: topicId
-        },
-        consensusTime: {
-          not: null
-        }
-      },
-      orderBy: {
-        consensusTime: 'desc'
-      },
-      select: {
-        consensusTime: true
-      }
-    });
-
-    if (lastEvent?.consensusTime) {
-      // Convert to nanoseconds timestamp format expected by Mirror API
-      return (lastEvent.consensusTime.getTime() * 1_000_000).toString();
-    }
-
-    return null;
-  } catch (error) {
-    console.error('Failed to get topic cursor:', error);
-    return null;
-  }
+export async function getCursor(topicId: string): Promise<string | null> {
+  const cursor = await prisma.mirrorCursor.findUnique({
+    where: { topicId }
+  });
+  return cursor?.lastConsensusTime || null;
 }
 
 /**
- * Update the cursor for a topic based on processed messages
+ * Save/update the cursor for a topic
  * @param topicId - The Hedera topic ID
- * @param consensusTime - The latest consensus timestamp processed
- * @param sequenceNumber - The latest sequence number processed
+ * @param ts - The consensus timestamp in seconds.nanos format
  */
-export async function updateTopicCursor(
-  topicId: string,
-  consensusTime: string,
-  sequenceNumber?: bigint
-): Promise<void> {
+export async function saveCursor(topicId: string, consensusTime: string): Promise<void> {
+  await prisma.mirrorCursor.upsert({
+    where: { topicId },
+    update: { lastConsensusTime: consensusTime },
+    create: {
+      topicId,
+      lastConsensusTime: consensusTime
+    }
+  });
+}
+
+/**
+ * Pull messages from Mirror Node and upsert them into local HcsEvent table
+ * @param params - Object containing topicId and optional wellId
+ * @returns Object with count of messages processed and last consensus time
+ */
+export async function pullAndUpsert({ topicId, wellId }: { topicId: string; wellId?: string }): Promise<{ pulled: number; lastConsensusTime: string | null }> {
   try {
-    // The cursor is implicitly updated when we upsert HcsEvents with consensusTime
-    // This function serves as a placeholder for explicit cursor management if needed
-    console.log(`Updated cursor for topic ${topicId} to ${consensusTime}`);
+    // Import fetchTopicMessages here to avoid circular dependency
+    const { fetchTopicMessages } = await import('@/lib/hedera/mirror');
+    
+    // Get current cursor or start from beginning
+    const fromTs = await getCursor(topicId) || '0.0';
+    
+    // Fetch messages from Mirror Node
+    const result = await fetchTopicMessages({ topicId, fromTs, limit: 100 });
+    
+    let maxConsensusTime: string | null = null;
+    let processedCount = 0;
+    
+    // Process each message
+    for (const message of result.messages) {
+      try {
+        const messageId = message.messageId || `${topicId}-${message.sequenceNumber}`;
+        
+        // Upsert HcsEvent
+        await prisma.hcsEvent.upsert({
+          where: {
+            messageId: messageId
+          },
+          update: {
+            consensusTime: consensusTimestampToDate(message.consensusTime),
+            sequenceNumber: BigInt(message.sequenceNumber),
+            hash: message.runningHash,
+            // Update wellId if provided (this ensures local events get associated)
+            ...(wellId && { wellId: wellId })
+          },
+          create: {
+            messageId: messageId,
+            type: message.payload?.type || 'UNKNOWN',
+            consensusTime: consensusTimestampToDate(message.consensusTime),
+            sequenceNumber: BigInt(message.sequenceNumber),
+            hash: message.runningHash,
+            payloadJson: JSON.stringify(message.payload),
+            // Associate with wellId if provided
+            ...(wellId && { wellId: wellId })
+          }
+        });
+        
+        // Track the maximum consensus time
+        if (!maxConsensusTime || message.consensusTime > maxConsensusTime) {
+          maxConsensusTime = message.consensusTime;
+        }
+        
+        processedCount++;
+      } catch (error) {
+        console.warn(`Failed to upsert message ${message.messageId}:`, error);
+      }
+    }
+    
+    // Update cursor to the maximum consensus time seen
+    if (maxConsensusTime) {
+      await saveCursor(topicId, maxConsensusTime);
+    }
+    
+    return {
+      pulled: processedCount,
+      lastConsensusTime: maxConsensusTime
+    };
   } catch (error) {
-    console.error('Failed to update topic cursor:', error);
+    console.error('Failed to pull and upsert messages:', error);
     throw error;
   }
 }

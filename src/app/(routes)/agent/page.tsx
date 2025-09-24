@@ -250,6 +250,13 @@ export default function AgentPage() {
         </div>
       </div>
 
+      {/* Document Anchor Form */}
+      <div className="mb-8">
+        <div className="bg-white rounded-lg shadow-card p-6">
+          <DocumentAnchorForm wellId="1" />
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Verification Tasks */}
         <div className="lg:col-span-2 bg-white rounded-lg shadow-card">

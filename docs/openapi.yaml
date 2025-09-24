@@ -1,0 +1,1543 @@
+openapi: 3.1.0
+info:
+  title: Waternity API
+  description: |
+    Waternity API untuk manajemen infrastruktur air berbasis Hedera Hashgraph.
+    
+    Platform ini mengintegrasikan HTS (tokenisasi), HCS (audit trail), dan HFS (dokumen)
+    untuk transparansi penuh dalam investasi dan operasi infrastruktur air.
+    
+    ## Fitur Utama
+    - Multi-role access (Investor, Operator, Agent, Admin)
+    - Hedera blockchain integration
+    - Real-time audit trail
+    - Automated settlements
+    - QR-based milestone verification
+    
+    ## Idempotency
+    Semua write operations menggunakan `messageId` (UUID v4) untuk idempotency.
+    Operasi dengan `messageId` yang sama akan diabaikan untuk mencegah duplikasi.
+  version: 1.0.0
+  contact:
+    name: Waternity Team
+    url: https://waternity.io
+    email: dev@waternity.io
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8787
+    description: Development server
+  - url: https://api.waternity.io
+    description: Production server
+
+paths:
+  # Health & System
+  /health:
+    get:
+      tags: [System]
+      summary: Health check
+      description: Cek status kesehatan sistem dan koneksi Hedera
+      responses:
+        '200':
+          description: System healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  # HCS Configuration
+  /hcs/config:
+    get:
+      tags: [HCS]
+      summary: Get HCS configuration
+      description: Mendapatkan konfigurasi HCS topic yang aktif
+      responses:
+        '200':
+          description: HCS configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HCSConfig'
+
+  /hcs/topic:
+    post:
+      tags: [HCS]
+      summary: Create HCS topic
+      description: Membuat topic HCS baru untuk audit trail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTopicRequest'
+      responses:
+        '201':
+          description: Topic created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopicResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /hcs/message:
+    post:
+      tags: [HCS]
+      summary: Submit HCS message
+      description: Mengirim pesan audit ke HCS topic
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HCSMessageRequest'
+      responses:
+        '201':
+          description: Message submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HCSMessageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Duplicate messageId (idempotency)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Projects
+  /projects:
+    get:
+      tags: [Projects]
+      summary: List projects
+      description: Mendapatkan daftar proyek air
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [planning, funding, construction, operational, completed]
+        - name: operator
+          in: query
+          schema:
+            type: string
+          description: Filter by operator account ID
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectListResponse'
+
+    post:
+      tags: [Projects]
+      summary: Create project
+      description: Membuat proyek infrastruktur air baru
+      security:
+        - WalletAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        '201':
+          description: Project created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /projects/{projectId}:
+    get:
+      tags: [Projects]
+      summary: Get project details
+      description: Mendapatkan detail proyek termasuk milestones dan investments
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDetailResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Projects]
+      summary: Update project
+      description: Update project information
+      security:
+        - WalletAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectRequest'
+      responses:
+        '200':
+          description: Project updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Investments
+  /investments:
+    post:
+      tags: [Investments]
+      summary: Create investment
+      description: Berinvestasi dalam proyek dengan membeli tokens
+      security:
+        - WalletAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInvestmentRequest'
+      responses:
+        '201':
+          description: Investment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestmentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /investments/portfolio/{accountId}:
+    get:
+      tags: [Investments]
+      summary: Get investment portfolio
+      description: Mendapatkan portfolio investasi user
+      security:
+        - WalletAuth: []
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Investment portfolio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # Milestones
+  /projects/{projectId}/milestones:
+    get:
+      tags: [Milestones]
+      summary: List project milestones
+      description: Mendapatkan daftar milestones untuk proyek
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of milestones
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MilestoneListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [Milestones]
+      summary: Create milestone
+      description: Membuat milestone baru untuk proyek
+      security:
+        - WalletAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMilestoneRequest'
+      responses:
+        '201':
+          description: Milestone created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MilestoneResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /milestones/{milestoneId}/verify:
+    post:
+      tags: [Milestones]
+      summary: Verify milestone
+      description: Verifikasi milestone completion via QR code
+      security:
+        - WalletAuth: []
+      parameters:
+        - name: milestoneId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyMilestoneRequest'
+      responses:
+        '200':
+          description: Milestone verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MilestoneVerificationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # Wells & Kiosks
+  /wells:
+    get:
+      tags: [Wells]
+      summary: List wells
+      description: Mendapatkan daftar wells
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [planning, construction, operational, maintenance, inactive]
+        - name: operator
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of wells
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WellListResponse'
+
+    post:
+      tags: [Wells]
+      summary: Create well
+      description: Membuat well baru
+      security:
+        - WalletAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWellRequest'
+      responses:
+        '201':
+          description: Well created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WellResponse'
+
+  /wells/{wellId}:
+    get:
+      tags: [Wells]
+      summary: Get well details
+      description: Mendapatkan detail well termasuk kiosks dan usage data
+      parameters:
+        - name: wellId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Well details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WellDetailResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /wells/{wellId}/kiosks:
+    get:
+      tags: [Wells]
+      summary: List well kiosks
+      description: Mendapatkan daftar kiosks untuk well
+      parameters:
+        - name: wellId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of kiosks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KioskListResponse'
+
+    post:
+      tags: [Wells]
+      summary: Create kiosk
+      description: Membuat kiosk baru untuk well
+      security:
+        - WalletAuth: []
+      parameters:
+        - name: wellId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateKioskRequest'
+      responses:
+        '201':
+          description: Kiosk created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KioskResponse'
+
+  # Valve Control
+  /kiosks/{kioskId}/valve:
+    post:
+      tags: [Operations]
+      summary: Control valve
+      description: Mengontrol valve kiosk (buka/tutup)
+      security:
+        - WalletAuth: []
+      parameters:
+        - name: kioskId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValveControlRequest'
+      responses:
+        '200':
+          description: Valve control executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValveControlResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /kiosks/{kioskId}/valve/dry-run:
+    post:
+      tags: [Operations]
+      summary: Dry run valve control
+      description: Simulasi kontrol valve tanpa eksekusi aktual
+      security:
+        - WalletAuth: []
+      parameters:
+        - name: kioskId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValveControlRequest'
+      responses:
+        '200':
+          description: Dry run completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValveDryRunResponse'
+
+  # Settlements
+  /settlements:
+    get:
+      tags: [Settlements]
+      summary: List settlements
+      description: Mendapatkan daftar settlements
+      parameters:
+        - name: wellId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, calculated, processed, failed]
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [daily, weekly, monthly]
+      responses:
+        '200':
+          description: List of settlements
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettlementListResponse'
+
+  /settlements/calculate:
+    post:
+      tags: [Settlements]
+      summary: Calculate settlement
+      description: Menghitung settlement untuk periode tertentu
+      security:
+        - WalletAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalculateSettlementRequest'
+      responses:
+        '200':
+          description: Settlement calculated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettlementCalculationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /settlements/{settlementId}/process:
+    post:
+      tags: [Settlements]
+      summary: Process settlement
+      description: Memproses settlement dan distribusi revenue
+      security:
+        - WalletAuth: []
+      parameters:
+        - name: settlementId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessSettlementRequest'
+      responses:
+        '200':
+          description: Settlement processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettlementProcessResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # Seeder (Development)
+  /seeder/start:
+    post:
+      tags: [Development]
+      summary: Start seeder
+      description: Memulai seeder untuk generate demo data
+      responses:
+        '200':
+          description: Seeder started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeederResponse'
+
+  /seeder/stop:
+    post:
+      tags: [Development]
+      summary: Stop seeder
+      description: Menghentikan seeder
+      responses:
+        '200':
+          description: Seeder stopped successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeederResponse'
+
+  /seeder/status:
+    get:
+      tags: [Development]
+      summary: Get seeder status
+      description: Mendapatkan status seeder
+      responses:
+        '200':
+          description: Seeder status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeederStatusResponse'
+
+components:
+  securitySchemes:
+    WalletAuth:
+      type: http
+      scheme: bearer
+      description: Hedera wallet signature authentication
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    # Base Schemas
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+        timestamp:
+          type: string
+          format: date-time
+
+    HealthResponse:
+      type: object
+      required: [status, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        hedera:
+          type: object
+          properties:
+            network:
+              type: string
+            operatorId:
+              type: string
+            balance:
+              type: string
+        database:
+          type: object
+          properties:
+            connected:
+              type: boolean
+            latency:
+              type: number
+
+    # HCS Schemas
+    HCSConfig:
+      type: object
+      properties:
+        topicId:
+          type: string
+          nullable: true
+        network:
+          type: string
+        operatorId:
+          type: string
+        isConfigured:
+          type: boolean
+
+    CreateTopicRequest:
+      type: object
+      required: [messageId, memo]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+          description: UUID v4 for idempotency
+        memo:
+          type: string
+          maxLength: 100
+        adminKey:
+          type: string
+          nullable: true
+        submitKey:
+          type: string
+          nullable: true
+
+    TopicResponse:
+      type: object
+      required: [topicId, transactionId, status]
+      properties:
+        topicId:
+          type: string
+        transactionId:
+          type: string
+        status:
+          type: string
+        hashscanUrl:
+          type: string
+        consensusTimestamp:
+          type: string
+
+    HCSMessageRequest:
+      type: object
+      required: [messageId, eventType, eventData]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+          description: UUID v4 for idempotency
+        eventType:
+          type: string
+          enum: [project_created, investment_made, milestone_verified, settlement_processed, valve_controlled]
+        eventData:
+          type: object
+        entityId:
+          type: string
+        entityType:
+          type: string
+        triggeredBy:
+          type: string
+
+    HCSMessageResponse:
+      type: object
+      required: [messageId, transactionId, status]
+      properties:
+        messageId:
+          type: string
+        transactionId:
+          type: string
+        status:
+          type: string
+        hashscanUrl:
+          type: string
+        consensusTimestamp:
+          type: string
+        sequenceNumber:
+          type: integer
+
+    # Project Schemas
+    CreateProjectRequest:
+      type: object
+      required: [messageId, name, description, fundingTarget, location]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 1000
+        fundingTarget:
+          type: number
+          minimum: 0
+        location:
+          type: object
+          required: [address, latitude, longitude]
+          properties:
+            address:
+              type: string
+            latitude:
+              type: number
+            longitude:
+              type: number
+        targetCompletion:
+          type: string
+          format: date
+        tokenSymbol:
+          type: string
+          maxLength: 10
+        tokenName:
+          type: string
+          maxLength: 50
+
+    UpdateProjectRequest:
+      type: object
+      required: [messageId]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 1000
+        status:
+          type: string
+          enum: [planning, funding, construction, operational, completed]
+        fundingTarget:
+          type: number
+          minimum: 0
+
+    ProjectResponse:
+      type: object
+      required: [projectId, name, status, createdAt]
+      properties:
+        projectId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        operatorAccountId:
+          type: string
+        fundingTarget:
+          type: number
+        fundingRaised:
+          type: number
+        location:
+          type: object
+        htsTokenId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ProjectListResponse:
+      type: object
+      required: [projects, total, limit, offset]
+      properties:
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectResponse'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    ProjectDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/ProjectResponse'
+        - type: object
+          properties:
+            milestones:
+              type: array
+              items:
+                $ref: '#/components/schemas/MilestoneResponse'
+            investments:
+              type: array
+              items:
+                $ref: '#/components/schemas/InvestmentResponse'
+            wells:
+              type: array
+              items:
+                $ref: '#/components/schemas/WellResponse'
+
+    # Investment Schemas
+    CreateInvestmentRequest:
+      type: object
+      required: [messageId, projectId, amountHbar]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+        amountHbar:
+          type: number
+          minimum: 0
+
+    InvestmentResponse:
+      type: object
+      required: [investmentId, investorAccountId, projectId, amountHbar, status, investedAt]
+      properties:
+        investmentId:
+          type: string
+        investorAccountId:
+          type: string
+        projectId:
+          type: string
+        amountHbar:
+          type: number
+        tokenAmount:
+          type: number
+        htsTransactionId:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, completed, failed]
+        investedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    PortfolioResponse:
+      type: object
+      required: [accountId, totalInvested, totalValue, investments]
+      properties:
+        accountId:
+          type: string
+        totalInvested:
+          type: number
+        totalValue:
+          type: number
+        totalReturns:
+          type: number
+        investments:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/InvestmentResponse'
+              - type: object
+                properties:
+                  project:
+                    $ref: '#/components/schemas/ProjectResponse'
+
+    # Milestone Schemas
+    CreateMilestoneRequest:
+      type: object
+      required: [messageId, name, description, percentage]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+        percentage:
+          type: number
+          minimum: 0
+          maximum: 100
+        targetDate:
+          type: string
+          format: date
+        verificationMethod:
+          type: string
+          enum: [qr_code, document, inspection]
+
+    VerifyMilestoneRequest:
+      type: object
+      required: [messageId, qrCodeData]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        qrCodeData:
+          type: string
+        verificationNotes:
+          type: string
+          maxLength: 500
+        evidenceFiles:
+          type: array
+          items:
+            type: string
+
+    MilestoneResponse:
+      type: object
+      required: [milestoneId, projectId, name, status, percentage, createdAt]
+      properties:
+        milestoneId:
+          type: string
+        projectId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        percentage:
+          type: number
+        status:
+          type: string
+          enum: [pending, in_progress, completed, verified]
+        verificationMethod:
+          type: string
+        qrCodeData:
+          type: string
+          nullable: true
+        agentAccountId:
+          type: string
+          nullable: true
+        targetDate:
+          type: string
+          format: date
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    MilestoneListResponse:
+      type: object
+      required: [milestones]
+      properties:
+        milestones:
+          type: array
+          items:
+            $ref: '#/components/schemas/MilestoneResponse'
+
+    MilestoneVerificationResponse:
+      type: object
+      required: [milestoneId, status, verifiedAt]
+      properties:
+        milestoneId:
+          type: string
+        status:
+          type: string
+        verifiedAt:
+          type: string
+          format: date-time
+        hcsTransactionId:
+          type: string
+        hashscanUrl:
+          type: string
+
+    # Well & Kiosk Schemas
+    CreateWellRequest:
+      type: object
+      required: [messageId, name, location, depthMeters, capacityLitersPerHour]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 100
+        location:
+          type: object
+          required: [address, latitude, longitude]
+          properties:
+            address:
+              type: string
+            latitude:
+              type: number
+            longitude:
+              type: number
+        depthMeters:
+          type: number
+          minimum: 0
+        capacityLitersPerHour:
+          type: number
+          minimum: 0
+
+    WellResponse:
+      type: object
+      required: [wellId, name, status, location, createdAt]
+      properties:
+        wellId:
+          type: string
+        name:
+          type: string
+        location:
+          type: object
+        status:
+          type: string
+          enum: [planning, construction, operational, maintenance, inactive]
+        depthMeters:
+          type: number
+        capacityLitersPerHour:
+          type: number
+        operatorAccountId:
+          type: string
+        htsTokenId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    WellListResponse:
+      type: object
+      required: [wells]
+      properties:
+        wells:
+          type: array
+          items:
+            $ref: '#/components/schemas/WellResponse'
+
+    WellDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/WellResponse'
+        - type: object
+          properties:
+            kiosks:
+              type: array
+              items:
+                $ref: '#/components/schemas/KioskResponse'
+            recentUsage:
+              type: array
+              items:
+                $ref: '#/components/schemas/WaterUsageResponse'
+            settlements:
+              type: array
+              items:
+                $ref: '#/components/schemas/SettlementResponse'
+
+    CreateKioskRequest:
+      type: object
+      required: [messageId, name, location]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 100
+        location:
+          type: object
+          required: [address, latitude, longitude]
+          properties:
+            address:
+              type: string
+            latitude:
+              type: number
+            longitude:
+              type: number
+        valveControllerId:
+          type: string
+
+    KioskResponse:
+      type: object
+      required: [kioskId, wellId, name, status, location, createdAt]
+      properties:
+        kioskId:
+          type: string
+        wellId:
+          type: string
+        name:
+          type: string
+        location:
+          type: object
+        status:
+          type: string
+          enum: [active, inactive, maintenance, error]
+        valveControllerId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    KioskListResponse:
+      type: object
+      required: [kiosks]
+      properties:
+        kiosks:
+          type: array
+          items:
+            $ref: '#/components/schemas/KioskResponse'
+
+    # Operations Schemas
+    ValveControlRequest:
+      type: object
+      required: [messageId, action]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        action:
+          type: string
+          enum: [open, close, restrict]
+        reason:
+          type: string
+          maxLength: 200
+        restrictionLevel:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Percentage restriction (0 = closed, 100 = fully open)
+
+    ValveControlResponse:
+      type: object
+      required: [controlId, kioskId, action, status, actionTimestamp]
+      properties:
+        controlId:
+          type: string
+        kioskId:
+          type: string
+        agentAccountId:
+          type: string
+        action:
+          type: string
+        reason:
+          type: string
+        status:
+          type: string
+          enum: [executed, failed, pending]
+        actionTimestamp:
+          type: string
+          format: date-time
+        hcsTransactionId:
+          type: string
+        hashscanUrl:
+          type: string
+
+    ValveDryRunResponse:
+      type: object
+      required: [kioskId, action, wouldExecute, reason]
+      properties:
+        kioskId:
+          type: string
+        action:
+          type: string
+        wouldExecute:
+          type: boolean
+        reason:
+          type: string
+        estimatedCost:
+          type: number
+        prerequisites:
+          type: array
+          items:
+            type: string
+
+    WaterUsageResponse:
+      type: object
+      required: [usageId, kioskId, litersDispensed, amountPaidHbar, usageTimestamp]
+      properties:
+        usageId:
+          type: string
+        kioskId:
+          type: string
+        customerAccountId:
+          type: string
+          nullable: true
+        litersDispensed:
+          type: number
+        amountPaidHbar:
+          type: number
+        paymentTransactionId:
+          type: string
+          nullable: true
+        usageTimestamp:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    # Settlement Schemas
+    CalculateSettlementRequest:
+      type: object
+      required: [messageId, wellId, periodStart, periodEnd]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        wellId:
+          type: string
+        periodStart:
+          type: string
+          format: date-time
+        periodEnd:
+          type: string
+          format: date-time
+
+    ProcessSettlementRequest:
+      type: object
+      required: [messageId]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        executeDistribution:
+          type: boolean
+          default: true
+
+    SettlementResponse:
+      type: object
+      required: [settlementId, wellId, status, totalRevenueHbar, createdAt]
+      properties:
+        settlementId:
+          type: string
+        wellId:
+          type: string
+        periodStartTimestamp:
+          type: string
+          format: date-time
+        periodEndTimestamp:
+          type: string
+          format: date-time
+        totalRevenueHbar:
+          type: number
+        operatorShareHbar:
+          type: number
+        investorShareHbar:
+          type: number
+        status:
+          type: string
+          enum: [pending, calculated, processed, failed]
+        hcsEventId:
+          type: string
+          nullable: true
+        htsDistributionTxId:
+          type: string
+          nullable: true
+        calculatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        processedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    SettlementListResponse:
+      type: object
+      required: [settlements]
+      properties:
+        settlements:
+          type: array
+          items:
+            $ref: '#/components/schemas/SettlementResponse'
+
+    SettlementCalculationResponse:
+      type: object
+      required: [settlementId, totalRevenueHbar, breakdown]
+      properties:
+        settlementId:
+          type: string
+        totalRevenueHbar:
+          type: number
+        breakdown:
+          type: object
+          properties:
+            operatorShare:
+              type: number
+            investorShare:
+              type: number
+            maintenanceFund:
+              type: number
+            platformFee:
+              type: number
+        distributionDetails:
+          type: array
+          items:
+            type: object
+            properties:
+              accountId:
+                type: string
+              tokenAmount:
+                type: number
+              hbarAmount:
+                type: number
+
+    SettlementProcessResponse:
+      type: object
+      required: [settlementId, status, processedAt]
+      properties:
+        settlementId:
+          type: string
+        status:
+          type: string
+        processedAt:
+          type: string
+          format: date-time
+        htsTransactionId:
+          type: string
+        hcsTransactionId:
+          type: string
+        hashscanUrl:
+          type: string
+        distributionSummary:
+          type: object
+          properties:
+            totalDistributed:
+              type: number
+            recipientCount:
+              type: integer
+            failedDistributions:
+              type: integer
+
+    # Development Schemas
+    SeederResponse:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          enum: [started, stopped, running, idle]
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    SeederStatusResponse:
+      type: object
+      required: [isRunning, status]
+      properties:
+        isRunning:
+          type: boolean
+        status:
+          type: string
+        lastActivity:
+          type: string
+          format: date-time
+          nullable: true
+        eventsGenerated:
+          type: integer
+        uptime:
+          type: number
+          description: Uptime in seconds
+
+tags:
+  - name: System
+    description: System health and configuration
+  - name: HCS
+    description: Hedera Consensus Service operations
+  - name: Projects
+    description: Water infrastructure project management
+  - name: Investments
+    description: Investment and tokenization operations
+  - name: Milestones
+    description: Project milestone tracking and verification
+  - name: Wells
+    description: Well and kiosk management
+  - name: Operations
+    description: Operational controls and monitoring
+  - name: Settlements
+    description: Revenue calculation and distribution
+  - name: Development
+    description: Development and testing utilities

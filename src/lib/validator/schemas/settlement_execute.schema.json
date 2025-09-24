@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "settlement_execute.schema.json",
+  "title": "Settlement Execute Schema",
+  "description": "Schema for settlement execution",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the message"
+    },
+    "settlementId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the settlement to execute"
+    },
+    "assetType": {
+      "type": "string",
+      "enum": ["HBAR", "TOKEN"],
+      "description": "Type of asset for settlement"
+    },
+    "tokenId": {
+      "type": "string",
+      "description": "Token ID (required when assetType is TOKEN)"
+    },
+    "amount": {
+      "type": "number",
+      "minimum": 0,
+      "exclusiveMinimum": true,
+      "description": "Amount to settle"
+    },
+    "executedBy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Entity executing the settlement"
+    },
+    "executionTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of execution"
+    },
+    "transactionId": {
+      "type": "string",
+      "description": "Hedera transaction ID"
+    }
+  },
+  "required": ["messageId", "settlementId", "assetType", "amount", "executedBy"],
+  "if": {
+    "properties": {
+      "assetType": {"const": "TOKEN"}
+    }
+  },
+  "then": {
+    "required": ["tokenId"]
+  },
+  "additionalProperties": false
+}

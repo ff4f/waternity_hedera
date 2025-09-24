@@ -116,6 +116,33 @@ export async function submitMessage(wellId: string, event: HcsEventMessage) {
   // TODO: Implement validateEvent
   // validateEvent(message);
 
+  // Use mock mode for development
+  if (process.env.HEDERA_MOCK_MODE === 'true') {
+    console.log('Mock HCS Message Submit:', { wellId, message });
+    
+    const mockTxId = `0.0.${Math.floor(Math.random() * 1000000)}@${Date.now()}.${Math.floor(Math.random() * 1000000)}`;
+    
+    const data: Prisma.HcsEventUncheckedCreateInput = {
+      wellId: wellId,
+      type: message.type,
+      messageId: message.messageId,
+      txId: mockTxId,
+      payloadJson: JSON.stringify(message.payload),
+      consensusTime: new Date(),
+      sequenceNumber: BigInt(Math.floor(Math.random() * 1000) + 1),
+    };
+
+    const hcsEvent = await prisma.hcsEvent.create({
+      data,
+    });
+
+    return {
+      hcsEvent,
+      messageId: hcsEvent.messageId,
+      txId: hcsEvent.txId,
+    };
+  }
+
   const { client } = getOperator();
 
   const tx = new TopicMessageSubmitTransaction({

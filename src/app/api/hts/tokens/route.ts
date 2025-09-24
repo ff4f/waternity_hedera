@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { withSchema } from "@/lib/validator/withSchema";
-import { ensureIdempotent } from "@/lib/validator/idempotency";
+import { withSchemaAndIdempotency } from "@/lib/validator/withSchemaAndIdempotency";
+import htsTokenCreateSchema from '@/lib/validator/schemas/hts_token_create.schema.json';
+import htsMintSchema from '@/lib/validator/schemas/hts_mint.schema.json';
 import { 
   TokenCreateTransaction, 
   TokenType, 
@@ -93,14 +94,10 @@ async function mintWaterToken({
   };
 }
 
-async function createTokenHandler(req: NextRequest, context?: any) {
-  const body = await req.json();
+async function createTokenHandler(req: NextRequest, res: any, body: any): Promise<Response> {
   const { wellId, tokenName, tokenSymbol, initialSupply = 0 } = body;
   
-  const idempotencyKey = req.headers.get("idempotency-key");
-  if (!idempotencyKey) {
-    return NextResponse.json({ error: "Idempotency-Key header is required" }, { status: 400 });
-  }
+
 
   // Find the well
   const well = await prisma.well.findUnique({
@@ -116,16 +113,13 @@ async function createTokenHandler(req: NextRequest, context?: any) {
     return NextResponse.json({ error: "Well already has a token" }, { status: 400 });
   }
 
-  const result = await ensureIdempotent(
-    idempotencyKey,
-    'hts_create_token',
-    async () => {
+  try {
       const htsResult = await createWaterToken({
         name: tokenName,
         symbol: tokenSymbol,
         decimals: 2,
         initialSupply,
-        treasuryAccountId: well.operator.accountId
+        treasuryAccountId: well.operator.accountId || ''
       });
 
       // Update well with token ID
@@ -134,36 +128,28 @@ async function createTokenHandler(req: NextRequest, context?: any) {
         data: { tokenId: htsResult.tokenId }
       });
 
-      return {
-        ...htsResult,
-        wellId,
-        tokenName,
-        tokenSymbol
-      };
-    }
-  );
-
-  if (result.isNew) {
-    return NextResponse.json(result.result, {
+    return new Response(JSON.stringify({
+      ...htsResult,
+      wellId,
+      tokenName,
+      tokenSymbol
+    }), {
       status: 201,
-      headers: { "Content-Type": "application/json" },
+      headers: { 'Content-Type': 'application/json' }
     });
-  } else {
-    return NextResponse.json({ message: "Token already created", resultHash: result.resultHash }, {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
+  } catch (error) {
+    console.error('Error creating token:', error);
+    return new Response(JSON.stringify({
+      error: 'Failed to create token'
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
     });
   }
 }
 
-async function mintTokenHandler(req: NextRequest, context?: any) {
-  const body = await req.json();
+async function mintTokenHandler(req: NextRequest, res: any, body: any): Promise<Response> {
   const { wellId, amount } = body;
-  
-  const idempotencyKey = req.headers.get("idempotency-key");
-  if (!idempotencyKey) {
-    return NextResponse.json({ error: "Idempotency-Key header is required" }, { status: 400 });
-  }
 
   // Find the well
   const well = await prisma.well.findUnique({
@@ -172,40 +158,41 @@ async function mintTokenHandler(req: NextRequest, context?: any) {
   });
 
   if (!well) {
-    return NextResponse.json({ error: "Well not found" }, { status: 404 });
+    return new Response(JSON.stringify({ error: "Well not found" }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 
   if (!well.tokenId) {
-    return NextResponse.json({ error: "Well does not have a token" }, { status: 400 });
+    return new Response(JSON.stringify({ error: "Well does not have a token" }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 
-  const result = await ensureIdempotent(
-    idempotencyKey,
-    'hts_mint_token',
-    async () => {
-      const htsResult = await mintWaterToken({
-        tokenId: well.tokenId!,
-        amount
-      });
-
-      return {
-        ...htsResult,
-        wellId,
-        tokenId: well.tokenId,
-        amount
-      };
-    }
-  );
-
-  if (result.isNew) {
-    return NextResponse.json(result.result, {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
+  try {
+    const htsResult = await mintWaterToken({
+      tokenId: well.tokenId!,
+      amount
     });
-  } else {
-    return NextResponse.json({ message: "Mint operation already processed", resultHash: result.resultHash }, {
+
+    return new Response(JSON.stringify({
+      ...htsResult,
+      wellId,
+      tokenId: well.tokenId,
+      amount
+    }), {
       status: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Error minting token:', error);
+    return new Response(JSON.stringify({
+      error: 'Failed to mint token'
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
     });
   }
 }
@@ -216,8 +203,8 @@ export async function POST(req: NextRequest) {
   const action = url.searchParams.get('action');
   
   if (action === 'mint') {
-    return withSchema('hts_mint.schema.json', mintTokenHandler)(req);
+    return withSchemaAndIdempotency(htsMintSchema, mintTokenHandler)(req);
   } else {
-    return withSchema('hts_create.schema.json', createTokenHandler)(req);
+    return withSchemaAndIdempotency(htsTokenCreateSchema, createTokenHandler)(req);
   }
 }

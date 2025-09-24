@@ -69,10 +69,10 @@ npm run dev
 The `.env` file is pre-configured with optimal settings:
 
 ```bash
-# Hedera Testnet (Ready to use)
+# Hedera Testnet Configuration
 HEDERA_NETWORK=testnet
-HEDERA_ACCOUNT_ID=0.0.6502425
-HEDERA_PRIVATE_KEY=afc3be868220472d8b057850d4152a76f763f0ce69d677c14baebaad66f60305
+HEDERA_ACCOUNT_ID=0.0.YOUR_ACCOUNT_ID
+HEDERA_PRIVATE_KEY=your_private_key_here
 
 # Database (SQLite for development)
 DATABASE_URL="file:./prisma/dev.db"

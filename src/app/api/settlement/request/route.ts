@@ -4,6 +4,7 @@ import { SettlementState } from "@/lib/types";
 import { NextRequest, NextResponse } from "next/server";
 import { withSchema } from "@/lib/validator/withSchema";
 import { ensureIdempotent } from "@/lib/validator/idempotency";
+import settlementRequestSchema from "@/lib/validator/schemas/settlement_request.schema.json";
 
 async function settlementRequestHandler(req: NextRequest, context?: any) {
   const body = (req as any).parsedBody;
@@ -50,4 +51,4 @@ async function settlementRequestHandler(req: NextRequest, context?: any) {
   return result.result || NextResponse.json({ error: "Operation failed" }, { status: 500 });
 }
 
-export const POST = withSchema('settlement_request.schema.json', settlementRequestHandler);
+export const POST = withSchema(settlementRequestSchema, settlementRequestHandler);

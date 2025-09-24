@@ -29,6 +29,10 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+.env.development
+.env.production
+.env.test
+.env.staging
 
 # vercel
 .vercel
@@ -59,15 +63,39 @@ logs
 # Hedera
 .hedera/
 
+# Sensitive files - DO NOT COMMIT
+# Cookie files containing session tokens
+cookies.txt
+operator_cookies.txt
+*_cookies.txt
+
+# Any files containing private keys or credentials
+*private_key*
+*credentials*
+*secret*
+
 # Database files
 *.db
 *.sqlite
 *.sqlite3
 dev.db
+prisma/dev.db
+prisma/*.db
+prisma/*.sqlite*
 
 # Temporary files
 *.tmp
 *.temp
+
+# Test data files that may contain sensitive info
+test_*.csv
+*_audit*.csv
+test_*.json
+
+# Log files that may contain credentials
+*.log
+logs/
+server/logs/
 
 # package manager files
 package-lock.json
@@ -122,3 +150,34 @@ jspm_packages/
 
 # Yarn Integrity file
 .yarn-integrity
+
+# Additional security exclusions
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Editor swap files
+*.swp
+*.swo
+*~
+
+# macOS specific
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Any file containing 'secret', 'key', or 'password' in name
+*secret*
+*key*
+*password*
+
+# JWT tokens and session files
+*.jwt
+*.token
+session*

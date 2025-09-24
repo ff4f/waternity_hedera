@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import { createOrAppendFile } from '@/lib/hedera/hfs';
+import { createOrAppendFile, sha256Hex } from '@/lib/hedera/hfs';
 import { submitMessage } from '@/lib/hedera/hcs';
 import { getOperator } from '@/lib/hedera/client';
 import { withSchema } from '@/lib/validator/withSchema';
 import { ensureIdempotent } from '@/lib/validator/idempotency';
+import anchorDocumentSchema from '@/lib/validator/schemas/anchor_document.schema.json';
 
 
 
-async function anchorDocumentHandler(req: NextRequest, context?: any) {
-  const body = (req as any).parsedBody;
+async function anchorDocumentHandler(req: NextRequest, res: any, body: any): Promise<Response> {
   const {
     messageId,
     wellId,
@@ -26,11 +26,21 @@ async function anchorDocumentHandler(req: NextRequest, context?: any) {
     async () => {
       let hfsFileId: string | undefined;
 
-      // If bundleContentBase64 present → encode to bytes and call createOrAppendFile → record hfsFileId
+      // If bundleContentBase64 present → decode, compute SHA256, verify equals digestHex, then createOrAppendFile
       if (bundleContentBase64) {
         const { client } = getOperator();
         const contentBytes = Buffer.from(bundleContentBase64, 'base64');
-        const { fileId } = await createOrAppendFile(contentBytes, client);
+        
+        // Verify digest matches
+        const computedDigest = sha256Hex(new Uint8Array(contentBytes));
+        if (computedDigest !== digestHex) {
+          return NextResponse.json(
+            { error: 'digest_mismatch', expected: digestHex, computed: computedDigest },
+            { status: 422 }
+          );
+        }
+        
+        const { fileId } = await createOrAppendFile(new Uint8Array(contentBytes), client);
         hfsFileId = fileId;
       }
 
@@ -81,4 +91,4 @@ async function anchorDocumentHandler(req: NextRequest, context?: any) {
   return result.result || NextResponse.json({ error: "Operation failed" }, { status: 500 });
 }
 
-export const POST = withSchema('anchor_doc.schema.json', anchorDocumentHandler);
+export const POST = withSchema(anchorDocumentSchema, anchorDocumentHandler);

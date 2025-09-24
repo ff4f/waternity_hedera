@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -19,27 +20,38 @@ async function main() {
   await prisma.idempotency.deleteMany();
 
   // Create Users
+  const hashedPassword = await bcrypt.hash('password123', 10);
+  
   const johnOperator = await prisma.user.create({
     data: {
       name: 'John Operator',
-      email: 'john@waternity.com',
+      username: 'john.operator',
+      password: hashedPassword,
+      accountId: '0.0.123456',
       walletEvm: '0x1234567890abcdef1234567890abcdef12345678',
+      role: 'OPERATOR',
     },
   });
 
   const sarahAgent = await prisma.user.create({
     data: {
       name: 'Sarah Agent',
-      email: 'sarah@waternity.com',
+      username: 'sarah.agent',
+      password: hashedPassword,
+      accountId: '0.0.234567',
       walletEvm: '0x2345678901bcdef12345678901bcdef123456789',
+      role: 'AGENT',
     },
   });
 
   const johnInvestor = await prisma.user.create({
     data: {
       name: 'John Investor',
-      email: 'john@investor.com',
+      username: 'john.investor',
+      password: hashedPassword,
+      accountId: '0.0.345678',
       walletEvm: '0x3456789012cdef123456789012cdef1234567890',
+      role: 'INVESTOR',
     },
   });
 
@@ -47,7 +59,7 @@ async function main() {
     data: {
       name: 'Alice Investor',
       username: 'alice.investor',
-      password: 'hashed_password_1',
+      password: hashedPassword,
       accountId: '0.0.45678',
       walletEvm: '0x456789013def123456789013def12345678901a',
       role: 'INVESTOR',
@@ -58,7 +70,7 @@ async function main() {
     data: {
       name: 'Mike Operator',
       username: 'mike.operator',
-      password: 'hashed_password_2',
+      password: hashedPassword,
       accountId: '0.0.56789',
       walletEvm: '0x56789014ef123456789014ef123456789014ef1',
       role: 'OPERATOR',
@@ -69,7 +81,7 @@ async function main() {
     data: {
       name: 'John Doe',
       username: 'john.user',
-      password: 'hashed_password_3',
+      password: hashedPassword,
       accountId: '0.0.123456',
       walletEvm: '0x6789015f123456789015f123456789015f1234',
       role: 'USER',
@@ -80,7 +92,7 @@ async function main() {
     data: {
       name: 'Emma Wilson',
       username: 'emma.agent',
-      password: 'hashed_password_4',
+      password: hashedPassword,
       accountId: '0.0.234567',
       walletEvm: '0x789016f123456789016f123456789016f12345',
       role: 'AGENT',
@@ -91,7 +103,7 @@ async function main() {
     data: {
       name: 'David Chen',
       username: 'david.investor',
-      password: 'hashed_password_5',
+      password: hashedPassword,
       accountId: '0.0.345678',
       walletEvm: '0x89017f123456789017f123456789017f123456',
       role: 'INVESTOR',
@@ -102,7 +114,7 @@ async function main() {
     data: {
       name: 'Lisa Rodriguez',
       username: 'lisa.operator',
-      password: 'hashed_password_6',
+      password: hashedPassword,
       accountId: '0.0.456789',
       walletEvm: '0x9018f123456789018f123456789018f1234567',
       role: 'OPERATOR',
@@ -113,7 +125,7 @@ async function main() {
     data: {
       name: 'Tom Anderson',
       username: 'tom.investor',
-      password: 'hashed_password_7',
+      password: hashedPassword,
       accountId: '0.0.567890',
       walletEvm: '0xa019f123456789019f123456789019f12345678',
       role: 'INVESTOR',
@@ -124,7 +136,7 @@ async function main() {
     data: {
       name: 'Maria Santos',
       username: 'maria.user',
-      password: 'hashed_password_8',
+      password: hashedPassword,
       accountId: '0.0.678901',
       walletEvm: '0xb01af123456789019f123456789019f123456789',
       role: 'USER',
@@ -135,7 +147,7 @@ async function main() {
     data: {
       name: 'Alex Thompson',
       username: 'alex.agent',
-      password: 'hashed_password_9',
+      password: hashedPassword,
       accountId: '0.0.789012',
       walletEvm: '0xc01bf123456789019f123456789019f12345678a',
       role: 'AGENT',
@@ -147,7 +159,7 @@ async function main() {
     data: {
       name: 'Sarah Operator',
       username: 'sarah.operator2',
-      password: 'hashed_password_13',
+      password: hashedPassword,
       accountId: '0.0.890123',
       walletEvm: '0xd01cf123456789019f123456789019f12345678b',
       role: 'OPERATOR',
@@ -158,7 +170,7 @@ async function main() {
     data: {
       name: 'James Investor',
       username: 'james.investor',
-      password: 'hashed_password_14',
+      password: hashedPassword,
       accountId: '0.0.901234',
       walletEvm: '0xe01df123456789019f123456789019f12345678c',
       role: 'INVESTOR',
@@ -169,7 +181,7 @@ async function main() {
     data: {
       name: 'Rachel User',
       username: 'rachel.user',
-      password: 'hashed_password_15',
+      password: hashedPassword,
       accountId: '0.0.012345',
       walletEvm: '0xf01ef123456789019f123456789019f12345678d',
       role: 'USER',
@@ -180,7 +192,7 @@ async function main() {
     data: {
       name: 'Kevin Agent',
       username: 'kevin.agent',
-      password: 'hashed_password_16',
+      password: hashedPassword,
       accountId: '0.0.123457',
       walletEvm: '0x101ff123456789019f123456789019f12345678e',
       role: 'AGENT',

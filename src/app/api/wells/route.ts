@@ -1,111 +1,104 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { z } from 'zod';
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/db/prisma';
+import { withSchemaAndIdempotency } from '@/lib/validator/withSchemaAndIdempotency';
+import wellCreateSchema from '@/lib/validator/schemas/well_create.schema.json';
+import { requireOperator } from '@/lib/auth/roles';
+import { Role } from '@/lib/types';
 
-const createWellSchema = z.object({
-  code: z.string().min(1, 'Well code is required'),
-  name: z.string().min(1, 'Well name is required'),
-  location: z.string().min(1, 'Location is required'),
-  topicId: z.string().min(1, 'Topic ID is required'),
-  operatorUserId: z.string().min(1, 'Operator user ID is required'),
-  tokenId: z.string().optional()
-});
-
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const operatorId = searchParams.get('operatorId');
+    const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
-    const offset = parseInt(searchParams.get('offset') || '0');
-
+    const operatorId = searchParams.get('operatorId');
+    
+    const skip = (page - 1) * limit;
+    
     const where = operatorId ? { operatorUserId: operatorId } : {};
-
-    const wells = await prisma.well.findMany({
-      where,
-      include: {
-        operator: {
-          select: {
-            id: true,
-            name: true,
-            accountId: true
-          }
-        },
-        memberships: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                accountId: true
-              }
+    
+    const [wells, total] = await Promise.all([
+      prisma.well.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          operator: {
+            select: {
+              id: true,
+              name: true,
+              username: true
             }
           }
         },
-        _count: {
-          select: {
-            events: true,
-            settlements: true
-          }
-        }
-      },
-      take: limit,
-      skip: offset,
-      orderBy: {
-        createdAt: 'desc'
-      }
-    });
-
-    const total = await prisma.well.count({ where });
-
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.well.count({ where })
+    ]);
+    
     return NextResponse.json({
       wells,
       pagination: {
-        total,
+        page,
         limit,
-        offset,
-        hasMore: offset + limit < total
+        total,
+        pages: Math.ceil(total / limit),
+        hasMore: page < Math.ceil(total / limit)
       }
     });
   } catch (error) {
     console.error('Error fetching wells:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch wells' },
-      { status: 500 }
-    );
+    return new Response(JSON.stringify({
+      error: 'Failed to fetch wells'
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  return withSchemaAndIdempotency(wellCreateSchema, createWellHandler)(request);
+}
+
+
+
+async function createWellHandler(req: NextRequest, res: any, body: any): Promise<Response> {
   try {
-    const body = await request.json();
-    const validatedData = createWellSchema.parse(body);
+    // Require OPERATOR role for well creation
+    const user = await requireOperator(req);
+    
+    const { code, name, location, topicId, operatorUserId, tokenId } = body;
 
     // Check if operator exists
     const operator = await prisma.user.findUnique({
-      where: { id: validatedData.operatorUserId }
+      where: { id: operatorUserId }
     });
 
     if (!operator) {
-      return NextResponse.json(
-        { error: 'Operator user not found' },
-        { status: 404 }
-      );
+      return new Response(JSON.stringify({
+        error: 'Operator user not found'
+      }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     // Check if well code is unique
     const existingWell = await prisma.well.findFirst({
-      where: { code: validatedData.code }
+      where: { code }
     });
 
     if (existingWell) {
-      return NextResponse.json(
-        { error: 'Well code already exists' },
-        { status: 409 }
-      );
+      return new Response(JSON.stringify({
+        error: 'Well code already exists'
+      }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     const well = await prisma.well.create({
-      data: validatedData,
+      data: { code, name, location, topicId, operatorUserId, tokenId },
       include: {
         operator: {
           select: {
@@ -117,19 +110,17 @@ export async function POST(request: Request) {
       }
     });
 
-    return NextResponse.json(well, { status: 201 });
+    return new Response(JSON.stringify(well), {
+      status: 201,
+      headers: { 'Content-Type': 'application/json' }
+    });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: 'Validation failed', details: error.errors },
-        { status: 400 }
-      );
-    }
-
     console.error('Error creating well:', error);
-    return NextResponse.json(
-      { error: 'Failed to create well' },
-      { status: 500 }
-    );
+    return new Response(JSON.stringify({
+      error: 'Failed to create well'
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 }

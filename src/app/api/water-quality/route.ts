@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { withSchema } from "@/lib/validator/withSchema";
-import { ensureIdempotent } from "@/lib/validator/idempotency";
+import { withSchemaAndIdempotency } from "@/lib/validator/withSchemaAndIdempotency";
+import meterReadingSchema from "@/lib/validator/schemas/meter_reading.schema.json";
 import { createHcsEvent } from "@/lib/hcs/events";
 
 async function createWaterQualityRecord({
@@ -74,9 +74,7 @@ async function createWaterQualityRecord({
   };
 }
 
-async function createWaterQualityHandler(req: NextRequest, context?: any) {
-  // Use parsed body from withSchema validation
-  const body = (req as any).parsedBody;
+async function createWaterQualityHandler(req: NextRequest, res: any, body: any): Promise<Response> {
   const {
     wellId,
     ph,
@@ -105,36 +103,23 @@ async function createWaterQualityHandler(req: NextRequest, context?: any) {
     return NextResponse.json({ error: "Well not found" }, { status: 404 });
   }
 
-  const result = await ensureIdempotent(
-    idempotencyKey,
-    'water_quality_create',
-    async () => {
-      return await createWaterQualityRecord({
-        wellId,
-        ph,
-        turbidity,
-        tds,
-        temperature,
-        chlorine,
-        bacteria,
-        compliance,
-        testedBy,
-        certificationBody
-      });
-    }
-  );
+  const result = await createWaterQualityRecord({
+    wellId,
+    ph,
+    turbidity,
+    tds,
+    temperature,
+    chlorine,
+    bacteria,
+    compliance,
+    testedBy,
+    certificationBody
+  });
 
-  if (result.isNew) {
-    return NextResponse.json(result.result, {
-      status: 201,
-      headers: { "Content-Type": "application/json" },
-    });
-  } else {
-    return NextResponse.json({ message: "Water quality record already processed", resultHash: result.resultHash }, {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  return new Response(JSON.stringify(result), {
+    status: 201,
+    headers: { "Content-Type": "application/json" }
+  });
 }
 
 async function getWaterQualityHandler(req: NextRequest, context?: any) {
@@ -178,7 +163,7 @@ async function getWaterQualityHandler(req: NextRequest, context?: any) {
 
 // Handle different HTTP methods
 export async function POST(req: NextRequest) {
-  return withSchema('water_quality_create.schema.json', createWaterQualityHandler)(req);
+  return withSchemaAndIdempotency(meterReadingSchema, createWaterQualityHandler)(req);
 }
 
 export async function GET(req: NextRequest) {

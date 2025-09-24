@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getTopicCursor, updateTopicCursor, consensusTimestampToDate } from "@/lib/mirror/cursors";
+import { getCursor, updateSyncCursor, consensusTimestampToDate } from "@/lib/mirror/cursors";
 
 const MirrorMessage = z.object({
   consensus_timestamp: z.string(),

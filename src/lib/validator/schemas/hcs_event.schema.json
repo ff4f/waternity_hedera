@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hcs_event.schema.json",
+  "title": "HCS Event Schema",
+  "description": "Schema for HCS events with type discriminator",
+  "allOf": [
+    {
+      "$ref": "hcs.common.schema.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {"const": "METER_READING"}
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "reading": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Meter reading value"
+              },
+              "unit": {
+                "type": "string",
+                "enum": ["kWh", "liters", "cubic_meters"],
+                "description": "Unit of measurement"
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Reading timestamp"
+              }
+            },
+            "required": ["reading", "unit", "timestamp"],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {"const": "VALVE_COMMAND"}
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": ["OPEN", "CLOSE", "ADJUST"],
+                "description": "Valve action"
+              },
+              "position": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100,
+                "description": "Valve position percentage (0-100)"
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Command timestamp"
+              }
+            },
+            "required": ["action", "timestamp"],
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  ]
+}

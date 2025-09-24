@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { submitMessage } from "@/lib/hedera/hcs";
-import { withSchema, getParsedBody, getIdempotencyKey } from "@/lib/validator/withSchema";
-import { withIdempotency } from "@/lib/validator/idempotency";
+import { withSchemaAndIdempotency } from "@/lib/validator/withSchemaAndIdempotency";
+import settlementRequestSchema from "@/lib/validator/schemas/settlement_request.schema.json";
+import { requireOperator } from "@/lib/auth/roles";
+import { Role } from "@/lib/types";
 
 interface SettlementRequestBody {
   messageId: string;
@@ -21,20 +23,23 @@ interface SettlementRequestBody {
   timestamp: string;
 }
 
-async function handlePOST(request: NextRequest) {
+async function handlePOST(request: NextRequest, res: any, body: SettlementRequestBody) {
   try {
-    const body: SettlementRequestBody = getParsedBody(request);
-    const idempotencyKey = getIdempotencyKey(request);
-    
-    // Check idempotency
-    const idempotencyResult = await withIdempotency(
-      idempotencyKey!,
-      "settlements_request",
-      async () => {
+    // Require OPERATOR role for settlement requests
+    const user = await requireOperator(request);
+        // Validate well exists
+        const well = await prisma.well.findUnique({
+          where: { code: body.wellId },
+        });
+
+        if (!well) {
+          throw new Error(`Well ${body.wellId} not found`);
+        }
+
         // Check if settlement already exists for this period
         const existingSettlement = await prisma.settlement.findFirst({
           where: {
-            wellId: body.wellId,
+            wellId: well.id,
             periodStart: new Date(body.periodStart),
             periodEnd: new Date(body.periodEnd),
           },
@@ -46,19 +51,10 @@ async function handlePOST(request: NextRequest) {
           );
         }
 
-        // Validate well exists
-        const well = await prisma.well.findUnique({
-          where: { id: body.wellId },
-        });
-
-        if (!well) {
-          throw new Error(`Well ${body.wellId} not found`);
-        }
-
         // Create settlement record
         const settlement = await prisma.settlement.create({
           data: {
-            wellId: body.wellId,
+            wellId: well.id,
             periodStart: new Date(body.periodStart),
             periodEnd: new Date(body.periodEnd),
             kwhTotal: body.kwhTotal,
@@ -83,7 +79,7 @@ async function handlePOST(request: NextRequest) {
         };
 
         // Submit to HCS
-        const { messageId } = await submitMessage(body.wellId, hcsMessage);
+        const { messageId } = await submitMessage(well.id, hcsMessage);
 
         // Update settlement with HCS event reference
         const updatedSettlement = await prisma.settlement.update({
@@ -91,15 +87,7 @@ async function handlePOST(request: NextRequest) {
           data: { requestEventId: messageId },
         });
 
-        return updatedSettlement;
-      }
-    );
-
-    if (idempotencyResult.isExisting) {
-      return NextResponse.json(idempotencyResult.result, { status: 200 });
-    }
-
-    return NextResponse.json(idempotencyResult.result, { status: 201 });
+    return NextResponse.json(updatedSettlement, { status: 201 });
     
   } catch (error) {
     console.error("Settlement request error:", error);
@@ -118,4 +106,4 @@ async function handlePOST(request: NextRequest) {
   }
 }
 
-export const POST = withSchema('settlement_request.schema.json', handlePOST);
+export const POST = withSchemaAndIdempotency(settlementRequestSchema, handlePOST);

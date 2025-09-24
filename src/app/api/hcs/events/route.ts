@@ -4,6 +4,7 @@ import { withSchema } from "@/lib/validator/withSchema";
 import { ensureIdempotent } from "@/lib/validator/idempotency";
 import { TopicMessageSubmitTransaction, TopicId } from "@hashgraph/sdk";
 import { createHederaClient } from "@/lib/hedera/client";
+import hcsEventSchema from "@/lib/validator/schemas/hcs_event.schema.json";
 
 // Simple HCS message publishing function
 async function publishHcsMessage({ topicId, message }: { topicId: string; message: any }) {
@@ -81,4 +82,4 @@ async function hcsEventsHandler(req: NextRequest, context?: any) {
   }
 }
 
-export const POST = withSchema('hcs_event.schema.json', hcsEventsHandler);
+export const POST = withSchema(hcsEventSchema, hcsEventsHandler);

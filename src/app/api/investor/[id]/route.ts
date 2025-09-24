@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/db/prisma';
+import { requireInvestor } from '@/lib/auth/roles';
+import { Role } from '@/lib/types';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    // Require INVESTOR role for investor data access
+    const user = await requireInvestor(request);
+    
     const investorId = params.id;
 
     // Get investor data

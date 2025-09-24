@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "valve_command.schema.json",
+  "title": "Valve Command Schema",
+  "description": "Schema for valve command submissions",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the message"
+    },
+    "wellId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the well"
+    },
+    "valveId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the valve"
+    },
+    "action": {
+      "type": "string",
+      "enum": ["OPEN", "CLOSE", "ADJUST"],
+      "description": "Valve action to perform"
+    },
+    "position": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Valve position percentage (0-100, required for ADJUST action)"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Command timestamp"
+    },
+    "commandedBy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Person or system that issued the command"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Optional reason for the valve command"
+    }
+  },
+  "required": ["messageId", "wellId", "valveId", "action", "timestamp", "commandedBy"],
+  "if": {
+    "properties": {
+      "action": {"const": "ADJUST"}
+    }
+  },
+  "then": {
+    "required": ["position"]
+  },
+  "additionalProperties": false
+}

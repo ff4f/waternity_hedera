@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/db/prisma';
 import { NextRequest } from 'next/server';
 import { GET as getWells, POST as createWell } from '@/app/api/wells/route';
 import { GET as getWell, PUT as updateWell, DELETE as deleteWell } from '@/app/api/wells/[id]/route';
@@ -141,6 +141,7 @@ describe('Wells API Tests', () => {
   describe('POST /api/wells', () => {
     it('should create a new well', async () => {
       const wellData = {
+        messageId: '550e8400-e29b-41d4-a716-446655440000',
         code: 'WELL001',
         name: 'Test Well',
         location: 'Test Location',
@@ -150,11 +151,19 @@ describe('Wells API Tests', () => {
 
       const request = new NextRequest('http://localhost:3000/api/wells', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'test-well-create-001'
+        },
         body: JSON.stringify(wellData)
       });
 
       const response = await createWell(request);
       const data = await response.json();
+      
+      if (response.status !== 201) {
+        throw new Error(`Expected 201 but got ${response.status}. Response: ${JSON.stringify(data)}`);
+      }
 
       expect(response.status).toBe(201);
       expect(data.code).toBe(wellData.code);
@@ -179,6 +188,7 @@ describe('Wells API Tests', () => {
 
       // Try to create well with same code
       const wellData = {
+        messageId: '550e8400-e29b-41d4-a716-446655440001',
         code: 'WELL001',
         name: 'Test Well 2',
         location: 'Location 2',
@@ -188,11 +198,20 @@ describe('Wells API Tests', () => {
 
       const request = new NextRequest('http://localhost:3000/api/wells', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify(wellData)
       });
 
       const response = await createWell(request);
       const data = await response.json();
+      console.log('Duplicate well test response:', { status: response.status, data });
+      
+      if (response.status === 500) {
+        console.error('500 Error details:', JSON.stringify(data, null, 2));
+        throw new Error(`Expected 409 but got 500. Error: ${JSON.stringify(data)}`);
+      }
 
       expect(response.status).toBe(409);
       expect(data.error).toBe('Well code already exists');
@@ -200,6 +219,7 @@ describe('Wells API Tests', () => {
 
     it('should reject invalid operator', async () => {
       const wellData = {
+        messageId: '550e8400-e29b-41d4-a716-446655440002',
         code: 'WELL001',
         name: 'Test Well',
         location: 'Test Location',
@@ -209,11 +229,20 @@ describe('Wells API Tests', () => {
 
       const request = new NextRequest('http://localhost:3000/api/wells', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify(wellData)
       });
 
       const response = await createWell(request);
       const data = await response.json();
+      console.log('Invalid operator test response:', { status: response.status, data });
+      
+      if (response.status === 500) {
+        console.error('500 Error details:', JSON.stringify(data, null, 2));
+        throw new Error(`Expected 404 but got 500. Error: ${JSON.stringify(data)}`);
+      }
 
       expect(response.status).toBe(404);
       expect(data.error).toBe('Operator user not found');

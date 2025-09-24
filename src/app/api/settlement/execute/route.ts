@@ -1,23 +1,16 @@
 import { prisma } from "@/lib/db/prisma";
+import { submitMessage } from "@/lib/hedera/hcs";
 import { SettlementState } from "@/lib/types";
 import { NextRequest, NextResponse } from "next/server";
 import { withSchema } from "@/lib/validator/withSchema";
 import { ensureIdempotent } from "@/lib/validator/idempotency";
+import settlementExecuteSchema from "@/lib/validator/schemas/settlement_execute.schema.json";
 
-async function settlementExecuteHandler(req: NextRequest, context?: any) {
-  const body = (req as any).parsedBody;
-  const idempotencyKey = (req as any).idempotencyKey;
+async function settlementExecuteHandler(req: NextRequest, res: any, body: any): Promise<Response> {
   const { messageId, settlementId, executedBy, payoutTransactions, executionNotes, timestamp } = body;
 
-  if (!idempotencyKey) {
-    return NextResponse.json(
-      { error: "Idempotency key is required" },
-      { status: 400 }
-    );
-  }
-
   const result = await ensureIdempotent(
-    idempotencyKey,
+    messageId,
     'settlement_execute',
     async () => {
       const settlement = await prisma.settlement.findUnique({
@@ -25,13 +18,10 @@ async function settlementExecuteHandler(req: NextRequest, context?: any) {
       });
 
       if (!settlement) {
-        return NextResponse.json(
-          { error: "Settlement not found" },
-          { status: 404 }
-        );
+        throw new Error("Settlement not found");
       }
 
-      for (const transfer of payoutTransactions) {
+      for (const transfer of payoutTransactions || []) {
         await prisma.payout.updateMany({
           where: {
             settlementId: settlementId,
@@ -49,11 +39,11 @@ async function settlementExecuteHandler(req: NextRequest, context?: any) {
         data: { status: SettlementState.EXECUTED },
       });
 
-      return NextResponse.json(updatedSettlement);
+      return updatedSettlement;
     }
   );
 
-  return result.result || NextResponse.json({ error: "Operation failed" }, { status: 500 });
+  return NextResponse.json(result);
 }
 
-export const POST = withSchema('settlement_execute.schema.json', settlementExecuteHandler);
+export const POST = withSchema(settlementExecuteSchema, settlementExecuteHandler);

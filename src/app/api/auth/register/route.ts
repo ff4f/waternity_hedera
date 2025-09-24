@@ -2,16 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 import { Role } from '../../../../lib/types';
 import bcrypt from 'bcryptjs';
-import { z } from 'zod';
+import { withSchemaAndIdempotency } from '@/lib/validator/withSchemaAndIdempotency';
+import authRegisterSchema from '@/lib/validator/schemas/auth_register.schema.json';
 
-const registerSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
-  username: z.string().min(3, 'Username must be at least 3 characters'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-  role: z.enum(['INVESTOR', 'OPERATOR', 'AGENT', 'ADMIN']).default('INVESTOR'),
-  walletEvm: z.string().optional(),
-  accountId: z.string().optional(),
-});
+
 
 interface RegisterRequest {
   name: string;
@@ -22,24 +16,13 @@ interface RegisterRequest {
   accountId?: string;
 }
 
-export async function POST(request: NextRequest) {
+async function registerHandler(req: NextRequest, res: any, body: any): Promise<Response> {
   try {
-    const body: RegisterRequest = await request.json();
+    const { name, accountId, publicKey, role } = body;
     
-    // Validate request body
-    const validation = registerSchema.safeParse(body);
-    if (!validation.success) {
-      return NextResponse.json(
-        { 
-          error: 'validation_error', 
-          message: 'Invalid input data',
-          details: validation.error.errors
-        },
-        { status: 400 }
-      );
-    }
-
-    const { name, username, password, role, walletEvm, accountId } = validation.data;
+    // Generate username from accountId
+    const username = accountId || `user_${Date.now()}`;
+    const password = publicKey; // Use publicKey as password for now
 
     // Check if username already exists
     const existingUser = await prisma.user.findUnique({
@@ -47,52 +30,52 @@ export async function POST(request: NextRequest) {
     });
 
     if (existingUser) {
-      return NextResponse.json(
-        { error: 'username_taken', message: 'Username already exists' },
-        { status: 409 }
-      );
+      return new Response(JSON.stringify({
+        error: 'User already exists'
+      }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     // Hash password
-    const saltRounds = 12;
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
     const user = await prisma.user.create({
       data: {
         name,
         username,
         password: hashedPassword,
-        role,
-        walletEvm,
         accountId,
-      },
-      select: {
-        id: true,
-        name: true,
-        username: true,
-        role: true,
-        walletEvm: true,
-        accountId: true,
-        createdAt: true,
+        role: role as Role
       }
     });
 
-    return NextResponse.json({
-      success: true,
-      message: 'User registered successfully',
-      user,
-    }, { status: 201 });
-
+    return new Response(JSON.stringify({
+      id: user.id,
+      name: user.name,
+      accountId: user.accountId,
+      role: user.role
+    }), {
+      status: 201,
+      headers: { 'Content-Type': 'application/json' }
+    });
   } catch (error) {
-    console.error('Registration error:', error);
-    
-    return NextResponse.json(
-      { error: 'internal_error', message: 'An internal error occurred' },
-      { status: 500 }
-    );
+    console.error('Error creating user:', error);
+    return new Response(JSON.stringify({
+      error: 'Failed to create user'
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 }
+
+export async function POST(request: NextRequest) {
+  return withSchemaAndIdempotency(authRegisterSchema, registerHandler)(request);
+}
+
+// POST_OLD function removed - invalid export for Next.js routes
 
 // Handle unsupported methods
 export async function GET() {

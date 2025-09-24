@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "settlement_approve.schema.json",
+  "title": "Settlement Approve Schema",
+  "description": "Schema for settlement approvals",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the message"
+    },
+    "settlementId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the settlement to approve"
+    },
+    "approvedBy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Entity approving the settlement"
+    },
+    "approvalTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of approval"
+    },
+    "approvedAmount": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Approved settlement amount"
+    },
+    "comments": {
+      "type": "string",
+      "description": "Optional comments on the approval"
+    }
+  },
+  "required": ["messageId", "settlementId", "approvedBy"],
+  "additionalProperties": false
+}

@@ -1,11 +1,7 @@
-import { Metadata } from 'next'
+'use client'
+
 import Link from 'next/link'
 import { useState } from 'react'
-
-export const metadata: Metadata = {
-  title: 'User Management - Admin Dashboard',
-  description: 'Manage users, roles, and permissions',
-}
 
 // Mock data untuk user management
 const mockUsersData = {

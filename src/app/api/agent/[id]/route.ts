@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/db/prisma';
+import { requireAgent } from '@/lib/auth/roles';
+import { Role } from '@/lib/types';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    // Require AGENT role for agent data access
+    const authCheck = await requireAgent(request);
+    if (authCheck) {
+      return authCheck; // Return error response if auth failed
+    }
+    
     const agentId = params.id;
 
     // Get agent data
@@ -27,8 +35,7 @@ export async function GET(
       include: {
         operator: {
           select: {
-            name: true,
-            email: true
+            name: true
           }
         }
       },
@@ -43,7 +50,7 @@ export async function GET(
       wellName: well.name,
       location: well.location,
       operatorName: well.operator?.name || 'Unknown Operator',
-      operatorId: well.operator?.email || 'unknown@example.com',
+      operatorId: well.operator?.name || 'unknown',
       priority: 'High',
       estimatedTime: '2-3 hours',
       description: getTaskDescription('water_quality_verification'),
@@ -81,7 +88,7 @@ export async function GET(
     const agentData = {
       id: agent.id,
       name: agent.name || 'Agent',
-      email: agent.email,
+      username: agent.username,
       walletEvm: agent.walletEvm,
       createdAt: agent.createdAt,
       stats: {

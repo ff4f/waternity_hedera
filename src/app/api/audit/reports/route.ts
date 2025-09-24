@@ -24,47 +24,99 @@ export async function GET(request: NextRequest) {
     });
 
     if (format === 'csv') {
-      const records = auditData.flatMap((settlement: any) => {
-        // Get HCS events for this settlement period
+      const records: any[] = [];
+      
+      auditData.forEach((settlement: any) => {
         const hcsEvents = settlement.well?.events || [];
         const hfsFileIds = settlement.well?.documents?.map((doc: any) => doc.hfsFileId).filter(Boolean) || [];
+        const topicId = settlement.well?.topicId;
+        const tokenId = settlement.well?.tokenId;
+        const hfsFileId = hfsFileIds[0];
         
-        const baseRecord = {
-          settlementId: settlement.id,
-          wellId: settlement.wellId,
-          periodStart: settlement.periodStart,
-          periodEnd: settlement.periodEnd,
-          kwhTotal: settlement.kwhTotal,
-          grossRevenue: settlement.grossRevenue,
-          status: settlement.status,
-          // Proof columns
-          consensusTime: hcsEvents[0]?.consensusTime || null,
-          sequenceNumber: hcsEvents[0]?.sequenceNumber || null,
-          txId: hcsEvents[0]?.txId || null,
-          topicId: settlement.well?.topicId,
-          tokenId: settlement.well?.tokenId,
-          hfsFileId: hfsFileIds[0] || null,
-          hashscanUrl: `https://hashscan.io/mainnet/topic/${settlement.well?.topicId}`,
-          mirrorUrl: `https://mainnet-public.mirrornode.hedera.com/api/v1/topics/${settlement.well?.topicId}/messages`,
-        };
+        // Create records for each HCS event
+        hcsEvents.forEach((event: any) => {
+          const baseRecord = {
+            eventType: event.type,
+            wellId: settlement.wellId,
+            consensusTime: event.consensusTime?.toISOString() || '',
+            sequenceNumber: event.sequenceNumber?.toString() || '',
+            txId: event.txId || '',
+            topicId: topicId || '',
+            tokenId: tokenId || '',
+            hfsFileId: hfsFileId || '',
+            actor: JSON.parse(event.payloadJson || '{}')?.triggeredBy || '',
+            notes: `Settlement: ${settlement.id}, Status: ${settlement.status}`,
+            hashscanUrl: topicId ? `https://hashscan.io/mainnet/topic/${topicId}` : '',
+            mirrorUrl: topicId ? `https://mainnet-public.mirrornode.hedera.com/api/v1/topics/${topicId}/messages` : '',
+          };
+          
+          // Add settlement records
+          records.push({
+            ...baseRecord,
+            notes: `Settlement ${settlement.id}: ${settlement.status}, Period: ${settlement.periodStart} to ${settlement.periodEnd}`,
+          });
+          
+          // Add payout records for this event if payouts exist
+          settlement.payouts?.forEach((payout: any) => {
+            records.push({
+              ...baseRecord,
+              notes: `Payout ${payout.id}: ${payout.assetType} ${payout.amount} to ${payout.recipientAccount}, Status: ${payout.status}`,
+              actor: payout.recipientAccount,
+            });
+          });
+        });
         
-        if (!settlement.payouts || settlement.payouts.length === 0) {
-          return baseRecord;
+        // If no HCS events, still create settlement and payout records
+        if (hcsEvents.length === 0) {
+          const baseRecord = {
+            eventType: 'SETTLEMENT_RECORD',
+            wellId: settlement.wellId,
+            consensusTime: settlement.createdAt?.toISOString() || '',
+            sequenceNumber: '',
+            txId: '',
+            topicId: topicId || '',
+            tokenId: tokenId || '',
+            hfsFileId: hfsFileId || '',
+            actor: '',
+            notes: `Settlement ${settlement.id}: ${settlement.status}, Period: ${settlement.periodStart} to ${settlement.periodEnd}`,
+            hashscanUrl: topicId ? `https://hashscan.io/mainnet/topic/${topicId}` : '',
+            mirrorUrl: topicId ? `https://mainnet-public.mirrornode.hedera.com/api/v1/topics/${topicId}/messages` : '',
+          };
+          
+          records.push(baseRecord);
+          
+          settlement.payouts?.forEach((payout: any) => {
+            records.push({
+              ...baseRecord,
+              eventType: 'PAYOUT_RECORD',
+              notes: `Payout ${payout.id}: ${payout.assetType} ${payout.amount} to ${payout.recipientAccount}, Status: ${payout.status}`,
+              actor: payout.recipientAccount,
+            });
+          });
         }
-        
-        return settlement.payouts.map((payout: any) => ({
-          ...baseRecord,
-          payoutId: payout.id,
-          recipientAccount: payout.recipientAccount,
-          assetType: payout.assetType,
-          amount: payout.amount,
-          payoutTokenId: payout.tokenId,
-          payoutTxId: payout.txId,
-          payoutStatus: payout.status,
-        }));
       });
 
-      const csv = stringify(records, { header: true });
+      // Sort records by consensusTime
+      records.sort((a, b) => new Date(a.consensusTime).getTime() - new Date(b.consensusTime).getTime());
+      
+      const csv = stringify(records, { 
+        header: true,
+        columns: [
+          'eventType',
+          'wellId', 
+          'consensusTime',
+          'sequenceNumber',
+          'txId',
+          'topicId',
+          'tokenId',
+          'hfsFileId',
+          'actor',
+          'notes',
+          'hashscanUrl',
+          'mirrorUrl'
+        ]
+      });
+      
       const filename = `audit_${wellId}_${from}_${to}.csv`;
       
       return new Response(csv, { 
