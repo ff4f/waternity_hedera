@@ -40,5 +40,5 @@ export interface HcsMessageEvent {
   topicId: string;
   wellId?: string;
   type: string;
-  payload: any;
+  payload: unknown;
 }

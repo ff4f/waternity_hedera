@@ -1,33 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import { requireAgent } from '@/lib/auth/roles';
-import { Role } from '@/lib/types';
+import { requireUser, assertRole, createUnauthorizedResponse, createForbiddenResponse, AuthenticationError, AuthorizationError } from '@/lib/auth/roles';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+
+async function getAgentHandler(req: NextRequest, params: { id: string }) {
+  console.log('[AGENT] GET /api/agent/[id] - Fetching agent data');
+  
   try {
-    // Require AGENT role for agent data access
-    const authCheck = await requireAgent(request);
-    if (authCheck) {
-      return authCheck; // Return error response if auth failed
+    const { id } = params;
+    
+    // Require authentication
+    const user = await requireUser(req);
+    
+    // Check if user has ADMIN role or is the agent themselves
+    if (user.role?.name !== 'ADMIN' && user.id !== id) {
+      console.log('[AGENT] Access denied for user:', user.id, 'requesting agent:', id);
+      throw new AuthorizationError("Insufficient permissions");
     }
     
-    const agentId = params.id;
-
-    // Get agent data
     const agent = await prisma.user.findUnique({
-      where: { 
-        id: agentId
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        hederaAccountId: true,
+        walletEvm: true,
+        createdAt: true,
+        role: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        wells: {
+          include: {
+            settlements: true,
+            waterQuality: {
+              orderBy: { createdAt: 'desc' },
+              take: 5
+            }
+          }
+        }
       }
     });
 
     if (!agent) {
-      return NextResponse.json(
-        { error: 'Agent not found' },
-        { status: 404 }
-      );
+      console.log('[AGENT] Agent not found:', id);
+      return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
 
     // Get wells that need verification
@@ -88,7 +108,6 @@ export async function GET(
     const agentData = {
       id: agent.id,
       name: agent.name || 'Agent',
-      username: agent.username,
       walletEvm: agent.walletEvm,
       createdAt: agent.createdAt,
       stats: {
@@ -113,13 +132,32 @@ export async function GET(
       }))
     };
 
-    return NextResponse.json(agentData);
+    console.log('[AGENT] Agent data fetched successfully:', id);
+    return NextResponse.json(agent);
   } catch (error) {
-    console.error('Error fetching agent data:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch agent data' },
-      { status: 500 }
-    );
+    console.error('[AGENT] Error fetching agent:', error);
+    return NextResponse.json({ error: 'Failed to fetch agent' }, { status: 500 });
+  }
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    return await getAgentHandler(request, params);
+  } catch (error) {
+    console.error('[AGENT] Error in GET handler:', error);
+    
+    if (error instanceof AuthenticationError) {
+      return createUnauthorizedResponse();
+    }
+    
+    if (error instanceof AuthorizationError) {
+      return createForbiddenResponse();
+    }
+    
+    return NextResponse.json({ error: 'Internal server error', message: 'Failed to fetch agent data' }, { status: 500 });
   }
 }
 

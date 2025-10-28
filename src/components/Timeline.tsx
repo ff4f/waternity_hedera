@@ -76,6 +76,16 @@ const Timeline: React.FC<TimelineProps> = ({ wellId }) => {
                   <strong>Transaction ID:</strong> {event.transactionId}
                 </div>
               )}
+              {/* Safe payload rendering to avoid object-as-child error */}
+              {(() => {
+                const p: any = (event as any).payload;
+                if (!p) return null;
+                if (typeof p === 'string') {
+                  return <div className="text-xs text-gray-600 break-words">{p}</div>;
+                }
+                const summary = [p?.details, p?.by].filter(Boolean).join(' — ');
+                return <div className="text-xs text-gray-600 break-words">{summary || JSON.stringify(p)}</div>;
+              })()}
             </li>
           ))}
         </ul>

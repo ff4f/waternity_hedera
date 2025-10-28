@@ -1,176 +1,147 @@
-import { getOperator } from "@/lib/hedera/client";
-import { prisma } from "@/lib/db/prisma";
-import { ulid } from "ulid";
-import { TopicMessageSubmitTransaction, Client } from "@hashgraph/sdk";
-import { Prisma } from "@prisma/client";
+import { TopicMessageSubmitTransaction, TransactionResponse } from "@hashgraph/sdk";
+import { createHederaClient } from "./client";
+import { sha256Hex } from "@/lib/hash";
+import { env } from "@/lib/env";
 
-/**
- * Get the appropriate network for link generation
- */
-function getHederaNetwork(): string {
-  return process.env.HEDERA_NETWORK || 'testnet';
+export interface PublishEventParams {
+  topicId: string;
+  messageJson: Record<string, unknown>;
+  messageId?: string;
+}
+
+export interface PublishEventResult {
+  transactionId: string;
+  consensusTimestamp?: string;
+  sequenceNumber?: number;
+  messageHash: string;
+  messageId: string;
 }
 
 /**
- * Generate HashScan topic URL
- * @param topicId - The Hedera topic ID
- * @returns HashScan URL for the topic
+ * Publish an event to Hedera Consensus Service (HCS)
+ * @param params - Publishing parameters
+ * @returns Promise with transaction details
  */
-export function generateHashScanTopicUrl(topicId: string): string {
-  const network = getHederaNetwork();
-  const baseUrl = network === 'mainnet' 
-    ? 'https://hashscan.io' 
-    : `https://hashscan.io/${network}`;
-  
-  return `${baseUrl}/topic/${topicId}`;
-}
-
-/**
- * Generate HashScan transaction URL
- * @param txId - The transaction ID
- * @returns HashScan URL for the transaction
- */
-export function generateHashScanTxUrl(txId: string): string {
-  const network = getHederaNetwork();
-  const baseUrl = network === 'mainnet' 
-    ? 'https://hashscan.io' 
-    : `https://hashscan.io/${network}`;
-  
-  return `${baseUrl}/transaction/${txId}`;
-}
-
-/**
- * Generate Mirror Node topic URL
- * @param topicId - The Hedera topic ID
- * @returns Mirror Node API URL for the topic
- */
-export function generateMirrorTopicUrl(topicId: string): string {
-  const network = getHederaNetwork();
-  
-  let baseUrl: string;
-  switch (network) {
-    case 'mainnet':
-      baseUrl = 'https://mainnet-public.mirrornode.hedera.com';
-      break;
-    case 'testnet':
-      baseUrl = 'https://testnet.mirrornode.hedera.com';
-      break;
-    case 'previewnet':
-      baseUrl = 'https://previewnet.mirrornode.hedera.com';
-      break;
-    default:
-      baseUrl = 'https://testnet.mirrornode.hedera.com';
-  }
-  
-  return `${baseUrl}/api/v1/topics/${topicId}/messages`;
-}
-
-/**
- * Generate Mirror Node transaction URL
- * @param txId - The transaction ID
- * @returns Mirror Node API URL for the transaction
- */
-export function generateMirrorTxUrl(txId: string): string {
-  const network = getHederaNetwork();
-  
-  let baseUrl: string;
-  switch (network) {
-    case 'mainnet':
-      baseUrl = 'https://mainnet-public.mirrornode.hedera.com';
-      break;
-    case 'testnet':
-      baseUrl = 'https://testnet.mirrornode.hedera.com';
-      break;
-    case 'previewnet':
-      baseUrl = 'https://previewnet.mirrornode.hedera.com';
-      break;
-    default:
-      baseUrl = 'https://testnet.mirrornode.hedera.com';
-  }
-  
-  return `${baseUrl}/api/v1/transactions/${txId}`;
-}
-
-export interface HcsEventMessage {
-  type: string;
-  payload: { [key: string]: any };
-}
-
-export async function submitMessage(wellId: string, event: HcsEventMessage) {
-  const messageId = ulid();
-
-  const well = await prisma.well.findUnique({
-    where: { id: wellId },
-  });
-
-  if (!well) {
-    throw new Error(`Well not found for id: ${wellId}`);
-  }
-
-  const message = {
-    type: event.type,
-    messageId: messageId,
-    payload: event.payload,
-  };
-
-  // TODO: Implement validateEvent
-  // validateEvent(message);
-
-  // Use mock mode for development
-  if (process.env.HEDERA_MOCK_MODE === 'true') {
-    console.log('Mock HCS Message Submit:', { wellId, message });
+export async function publishEvent({
+  topicId,
+  messageJson,
+  messageId
+}: PublishEventParams): Promise<PublishEventResult> {
+  try {
+    const client = createHederaClient();
     
-    const mockTxId = `0.0.${Math.floor(Math.random() * 1000000)}@${Date.now()}.${Math.floor(Math.random() * 1000000)}`;
+    // Generate message ID if not provided
+    const finalMessageId = messageId || crypto.randomUUID();
     
-    const data: Prisma.HcsEventUncheckedCreateInput = {
-      wellId: wellId,
-      type: message.type,
-      messageId: message.messageId,
-      txId: mockTxId,
-      payloadJson: JSON.stringify(message.payload),
-      consensusTime: new Date(),
-      sequenceNumber: BigInt(Math.floor(Math.random() * 1000) + 1),
+    // Add metadata to the message
+    const messageWithMetadata = {
+      ...messageJson,
+      messageId: finalMessageId,
+      timestamp: new Date().toISOString()
     };
-
-    const hcsEvent = await prisma.hcsEvent.create({
-      data,
-    });
-
+    
+    // Convert to JSON string
+    const messageString = JSON.stringify(messageWithMetadata);
+    
+    // Calculate message hash
+    const messageHash = sha256Hex(messageString);
+    
+    // Create and submit the transaction
+    const transaction = new TopicMessageSubmitTransaction()
+      .setTopicId(topicId)
+      .setMessage(messageString);
+    
+    // Execute the transaction
+    const response: TransactionResponse = await transaction.execute(client);
+    
+    // Get the transaction receipt and record
+    const receipt = await response.getReceipt(client);
+    const record = await response.getRecord(client);
+    
+    // Get consensus timestamp from record and sequence number from receipt
+    const consensusTimestamp = record.consensusTimestamp?.toString();
+    const sequenceNumber = receipt.topicSequenceNumber?.toNumber();
+    
     return {
-      hcsEvent,
-      messageId: hcsEvent.messageId,
-      txId: hcsEvent.txId,
+      transactionId: response.transactionId.toString(),
+      consensusTimestamp,
+      sequenceNumber,
+      messageHash,
+      messageId: finalMessageId
     };
+    
+  } catch (error) {
+    console.error('Failed to publish HCS event:', error);
+    throw new Error(
+      `Failed to publish event to topic ${topicId}: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      }`
+    );
   }
+}
 
-  const { client } = getOperator();
+/**
+ * Publish multiple events to HCS in batch
+ * @param events - Array of events to publish
+ * @returns Promise with array of results
+ */
+export async function publishEventBatch(
+  events: PublishEventParams[]
+): Promise<PublishEventResult[]> {
+  const results: PublishEventResult[] = [];
+  
+  for (const event of events) {
+    try {
+      const result = await publishEvent(event);
+      results.push(result);
+    } catch (error) {
+      console.error(`Failed to publish event ${event.messageId}:`, error);
+      // Continue with other events even if one fails
+      throw error;
+    }
+  }
+  
+  return results;
+}
 
-  const tx = new TopicMessageSubmitTransaction({
-    topicId: well.topicId,
-    message: JSON.stringify(message),
-  }).freezeWith(client);
+/**
+ * Validate topic ID format
+ * @param topicId - Topic ID to validate
+ * @returns boolean indicating if valid
+ */
+export function isValidTopicId(topicId: string): boolean {
+  // Hedera topic ID format: shard.realm.num (e.g., "0.0.12345")
+  const topicIdRegex = /^\d+\.\d+\.\d+$/;
+  return topicIdRegex.test(topicId);
+}
 
-  const txResponse = await tx.execute(client);
-  const receipt = await txResponse.getReceipt(client);
-  const record = await txResponse.getRecord(client);
-
-  const data: Prisma.HcsEventUncheckedCreateInput = {
-    wellId: wellId,
-    type: message.type,
-    messageId: message.messageId,
-    txId: txResponse.transactionId.toString(),
-    payloadJson: JSON.stringify(message.payload),
-    consensusTime: record.consensusTimestamp.toDate(),
-    sequenceNumber: receipt.topicSequenceNumber ? BigInt(receipt.topicSequenceNumber.toString()) : BigInt(0),
-  };
-
-  const hcsEvent = await prisma.hcsEvent.create({
-    data,
-  });
-
-  return {
-    hcsEvent,
-    messageId: hcsEvent.messageId,
-    txId: hcsEvent.txId,
-  };
+/**
+ * Get topic info from Mirror Node
+ * @param topicId - Topic ID to query
+ * @returns Promise with topic information
+ */
+export async function getTopicInfo(topicId: string) {
+  if (!isValidTopicId(topicId)) {
+    throw new Error(`Invalid topic ID format: ${topicId}`);
+  }
+  
+  try {
+    // Ensure we preserve the '/api/v1' path from the configured base and avoid issues with URL resolution
+    const base = env.MIRROR_NODE_URL.replace(/\/+$/, '');
+    const url = `${base}/topics/${topicId}`;
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`Mirror Node request failed: ${response.status} ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Failed to get topic info:', error);
+    throw new Error(
+      `Failed to get topic info for ${topicId}: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      }`
+    );
+  }
 }

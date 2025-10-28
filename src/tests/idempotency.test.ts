@@ -18,14 +18,25 @@ describe("/api/hcs/events", () => {
     await prisma.token.deleteMany();
     await prisma.well.deleteMany();
     await prisma.user.deleteMany();
+    await prisma.role.deleteMany();
+
+    // Ensure USER role exists
+    const userRole = await prisma.role.upsert({
+      where: { name: 'USER' },
+      update: {},
+      create: {
+        name: 'USER'
+      }
+    });
 
     user = await prisma.user.create({
       data: {
         name: "Test User",
-        username: `idempotency_test_${Date.now()}`,
-        password: "test_password_123",
+        email: `idempotency_test_${Date.now()}@test.com`,
+        hashedPassword: "test_password_123",
+        salt: "test_salt",
         walletEvm: "0.0.123456",
-        role: "USER",
+        roleId: userRole.id,
       },
     });
 

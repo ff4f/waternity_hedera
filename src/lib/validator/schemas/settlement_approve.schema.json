@@ -1,40 +1,182 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "settlement_approve.schema.json",
-  "title": "Settlement Approve Schema",
-  "description": "Schema for settlement approvals",
-  "type": "object",
-  "properties": {
-    "messageId": {
-      "type": "string",
-      "format": "uuid",
-      "description": "Unique identifier for the message"
+  "$id": "https://waternity.com/schemas/settlement_approve.schema.json",
+  "title": "Settlement Approve Event Schema",
+  "description": "Schema for settlement approval events",
+  "allOf": [
+    {
+      "$ref": "./common.hcs.schema.json"
     },
-    "settlementId": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Identifier of the settlement to approve"
-    },
-    "approvedBy": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Entity approving the settlement"
-    },
-    "approvalTimestamp": {
-      "type": "string",
-      "format": "date-time",
-      "description": "Timestamp of approval"
-    },
-    "approvedAmount": {
-      "type": "number",
-      "minimum": 0,
-      "description": "Approved settlement amount"
-    },
-    "comments": {
-      "type": "string",
-      "description": "Optional comments on the approval"
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "settlement_approve"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "settlementId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Reference to the original settlement request"
+            },
+            "approvedBy": {
+              "type": "string",
+              "description": "ID of the user approving the settlement"
+            },
+            "approvalStatus": {
+              "type": "string",
+              "enum": ["APPROVED", "REJECTED", "CONDITIONAL_APPROVAL"],
+              "description": "Approval decision"
+            },
+            "approvalDate": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When the approval was given"
+            },
+            "adjustments": {
+              "type": "object",
+              "properties": {
+                "originalAmount": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Original requested amount"
+                },
+                "adjustedAmount": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Approved amount after adjustments"
+                },
+                "adjustmentReason": {
+                  "type": "string",
+                  "description": "Reason for amount adjustment"
+                },
+                "adjustmentDetails": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": ["DISCOUNT", "PENALTY", "CORRECTION", "BONUS"],
+                        "description": "Type of adjustment"
+                      },
+                      "amount": {
+                        "type": "number",
+                        "description": "Adjustment amount (positive or negative)"
+                      },
+                      "reason": {
+                        "type": "string",
+                        "description": "Specific reason for this adjustment"
+                      }
+                    },
+                    "required": ["type", "amount", "reason"],
+                    "additionalProperties": false
+                  }
+                },
+                "currency": {
+                  "type": "string",
+                  "enum": ["HBAR", "USD", "EUR", "NGN", "KES", "GHS"],
+                  "description": "Currency for amounts"
+                }
+              },
+              "additionalProperties": false
+            },
+            "conditions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["DOCUMENTATION", "VERIFICATION", "COMPLIANCE", "TECHNICAL"],
+                    "description": "Type of condition"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Detailed condition description"
+                  },
+                  "dueDate": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "When condition must be met"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": ["PENDING", "MET", "OVERDUE"],
+                    "default": "PENDING",
+                    "description": "Current status of the condition"
+                  }
+                },
+                "required": ["type", "description"],
+                "additionalProperties": false
+              },
+              "description": "Conditions that must be met for approval"
+            },
+            "paymentInstructions": {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "type": "string",
+                  "enum": ["HEDERA_TOKEN", "BANK_TRANSFER", "MOBILE_MONEY", "CRYPTO"],
+                  "description": "Payment method to use"
+                },
+                "accountDetails": {
+                  "type": "object",
+                  "properties": {
+                    "hederaAccountId": {
+                      "type": "string",
+                      "pattern": "^0\\.0\\.[0-9]+$",
+                      "description": "Hedera account ID for token transfers"
+                    },
+                    "tokenId": {
+                      "type": "string",
+                      "pattern": "^0\\.0\\.[0-9]+$",
+                      "description": "Hedera token ID"
+                    },
+                    "bankAccount": {
+                      "type": "string",
+                      "description": "Bank account number"
+                    },
+                    "mobileNumber": {
+                      "type": "string",
+                      "description": "Mobile money account number"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "scheduledDate": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "When payment should be made"
+                },
+                "reference": {
+                  "type": "string",
+                  "description": "Payment reference number"
+                }
+              },
+              "required": ["method"],
+              "additionalProperties": false
+            },
+            "comments": {
+              "type": "string",
+              "description": "Additional comments from approver"
+            },
+            "reviewedDocuments": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "description": "Document IDs that were reviewed"
+              },
+              "description": "List of documents reviewed during approval"
+            }
+          },
+          "required": ["settlementId", "approvedBy", "approvalStatus", "approvalDate"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["eventType", "data"]
     }
-  },
-  "required": ["messageId", "settlementId", "approvedBy"],
-  "additionalProperties": false
+  ]
 }

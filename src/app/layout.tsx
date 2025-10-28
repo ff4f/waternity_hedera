@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
+import { Navigation } from '@/components/Navigation'
+import Providers from './providers'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -67,48 +69,15 @@ export default function RootLayout({
       </head>
       <body className={inter.className}>
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-          {/* Navigation Header */}
-          <header className="bg-white shadow-sm border-b border-gray-200">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex justify-between items-center h-16">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <h1 className="text-2xl font-bold text-blue-600">Waternity</h1>
-                  </div>
-                  <nav className="hidden md:ml-8 md:flex md:space-x-8">
-                    <a href="/" className="text-gray-900 hover:text-blue-600 px-3 py-2 text-sm font-medium">
-                      Dashboard
-                    </a>
-                    <a href="/investor" className="text-gray-500 hover:text-blue-600 px-3 py-2 text-sm font-medium">
-                      Investor
-                    </a>
-                    <a href="/operator" className="text-gray-500 hover:text-blue-600 px-3 py-2 text-sm font-medium">
-                      Operator
-                    </a>
-                    <a href="/agent" className="text-gray-500 hover:text-blue-600 px-3 py-2 text-sm font-medium">
-                      Agent
-                    </a>
-                    <a href="/admin" className="text-gray-500 hover:text-blue-600 px-3 py-2 text-sm font-medium">
-                      Admin
-                    </a>
-                  </nav>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <div className="text-sm text-gray-500">
-                    Network: <span className="font-medium text-green-600">Hedera Testnet</span>
-                  </div>
-                  <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
-                    Connect Wallet
-                  </button>
-                </div>
-              </div>
-            </div>
-          </header>
+          <Providers>
+            {/* Navigation Header */}
+            <Navigation />
 
-          {/* Main Content */}
-          <main className="flex-1">
-            {children}
-          </main>
+            {/* Main Content */}
+            <main className="flex-1">
+              {children}
+            </main>
+          </Providers>
 
           {/* Footer */}
           <footer className="bg-white border-t border-gray-200 mt-auto">

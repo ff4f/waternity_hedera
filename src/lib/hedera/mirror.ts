@@ -1,201 +1,186 @@
-import { z } from "zod";
-import { getCursor, updateSyncCursor, consensusTimestampToDate } from "@/lib/mirror/cursors";
+import { env } from "@/lib/env";
 
-const MirrorMessage = z.object({
-  consensus_timestamp: z.string(),
-  message: z.string(),
-  running_hash: z.string(),
-  running_hash_version: z.number(),
-  sequence_number: z.number(),
-  topic_id: z.string(),
-});
-
-const MirrorMessagesResponse = z.object({
-  messages: z.array(MirrorMessage),
-  links: z.object({
-    next: z.string().nullable(),
-  }),
-});
-
-export interface ParsedMirrorMessage {
-  consensusTime: string;
+export interface MirrorMessage {
+  consensusTimestamp: string;
+  messageId: string;
   sequenceNumber: number;
   runningHash: string;
-  messageId?: string;
-  payload: any;
-  rawMessage: string;
+  message: string; // base64 encoded
+  payload?: unknown; // decoded JSON
 }
 
-export interface MirrorSyncResult {
-  messages: ParsedMirrorMessage[];
-  totalFetched: number;
-  lastCursor: string | null;
-  hasMore: boolean;
+export interface MirrorNodeMessage {
+  consensus_timestamp: string;
+  sequence_number: number;
+  running_hash: string;
+  message: string;
 }
 
-/**
- * Get the appropriate Mirror Node base URL based on network
- */
-function getMirrorNodeUrl(): string {
-  const network = process.env.HEDERA_NETWORK || 'testnet';
-  
-  switch (network) {
-    case 'mainnet':
-      return 'https://mainnet-public.mirrornode.hedera.com';
-    case 'testnet':
-      return 'https://testnet.mirrornode.hedera.com';
-    case 'previewnet':
-      return 'https://previewnet.mirrornode.hedera.com';
-    default:
-      return 'https://testnet.mirrornode.hedera.com';
-  }
+export interface MirrorTopicResponse {
+  messages: MirrorMessage[];
+  links: {
+    next?: string;
+  };
+}
+
+export interface FetchTopicMessagesParams {
+  topicId: string;
+  fromTs?: string; // timestamp in "seconds.nanos" format
+  limit?: number;
 }
 
 /**
- * Parse a base64 encoded message from Mirror Node
- * @param base64Message - The base64 encoded message
- * @returns Parsed message object or null if parsing fails
- */
-function parseMessage(base64Message: string): { messageId?: string; payload: any } | null {
-  try {
-    const decoded = Buffer.from(base64Message, 'base64').toString('utf8');
-    const parsed = JSON.parse(decoded);
-    
-    return {
-      messageId: parsed.messageId,
-      payload: parsed
-    };
-  } catch (error) {
-    console.warn('Failed to parse message:', error);
-    return {
-      payload: { rawMessage: base64Message }
-    };
-  }
-}
-
-/**
- * Fetches topic messages from the Hedera Mirror Node REST API with pagination.
- *
- * @param topicId - The topic ID to fetch messages from.
- * @param fromTs - The starting timestamp (nanoseconds).
- * @param limit - Maximum number of messages to fetch (default: 100)
- * @returns A promise that resolves to the sync result.
+ * Fetch messages from Hedera Mirror Node REST API
+ * @param params - Parameters for fetching messages
+ * @returns Promise with messages and pagination links
  */
 export async function fetchTopicMessages({
   topicId,
   fromTs,
-  limit = 100,
-}: {
-  topicId: string;
-  fromTs?: string;
-  limit?: number;
-}): Promise<MirrorSyncResult> {
-  const params = new URLSearchParams();
-  params.append('order', 'asc');
-  params.append('limit', limit.toString());
-  
-  if (fromTs) {
-    params.append('timestamp', `gt:${fromTs}`);
-  }
-
-  const baseUrl = getMirrorNodeUrl();
-  const url = `${baseUrl}/api/v1/topics/${topicId}/messages?${params.toString()}`;
-
+  limit = 100
+}: FetchTopicMessagesParams): Promise<MirrorTopicResponse> {
   try {
-    const response = await fetch(url);
+    const url = new URL(`/api/v1/topics/${topicId}/messages`, env.MIRROR_NODE_URL);
     
-    if (!response.ok) {
-      if (response.status === 404) {
-        // Topic not found or no messages
-        return {
-          messages: [],
-          totalFetched: 0,
-          lastCursor: null,
-          hasMore: false
-        };
-      }
-      throw new Error(`HTTP error! status: ${response.status}`);
+    // Add query parameters
+    if (fromTs) {
+      url.searchParams.set('timestamp', `gt:${fromTs}`);
     }
-    
-    const data = await response.json();
-    const { messages, links } = MirrorMessagesResponse.parse(data);
+    url.searchParams.set('limit', limit.toString());
+    url.searchParams.set('order', 'asc'); // Ensure chronological order
 
-    const parsedMessages: ParsedMirrorMessage[] = messages.map((msg) => {
-      const parsed = parseMessage(msg.message);
-      
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Mirror Node API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    
+    // Process and decode messages
+    const messages: MirrorMessage[] = (data.messages || []).map((msg: MirrorNodeMessage) => {
+      const decoded = decodeBase64Message(msg.message);
       return {
-        consensusTime: msg.consensus_timestamp,
+        consensusTimestamp: msg.consensus_timestamp,
+        messageId: `${topicId}-${msg.sequence_number}`,
         sequenceNumber: msg.sequence_number,
-        runningHash: msg.running_hash || '',
-        messageId: parsed?.messageId,
-        payload: parsed?.payload || {},
-        rawMessage: msg.message
+        runningHash: msg.running_hash,
+        message: msg.message,
+        payload: decoded,
       };
     });
 
-    const lastCursor = messages.length > 0 
-      ? messages[messages.length - 1].consensus_timestamp 
-      : null;
-
     return {
-      messages: parsedMessages,
-      totalFetched: parsedMessages.length,
-      lastCursor,
-      hasMore: messages.length === limit
+      messages,
+      links: data.links || {},
     };
   } catch (error) {
     console.error('Failed to fetch topic messages:', error);
-    return {
-      messages: [],
-      totalFetched: 0,
-      lastCursor: null,
-      hasMore: false
-    };
+    throw error;
   }
 }
 
 /**
- * Sync all messages for a topic from Mirror Node with automatic pagination
- * @param topicId - The Hedera topic ID
- * @param fromTimestamp - Optional starting timestamp
- * @param maxMessages - Maximum total messages to fetch (default: 1000)
- * @returns Complete sync result
+ * Decode base64 encoded message to JSON
+ * @param base64Message - Base64 encoded message
+ * @returns Decoded JSON object or null if invalid
  */
-export async function syncTopicMessages(
-  topicId: string,
-  fromTimestamp?: string,
-  maxMessages: number = 1000
-): Promise<MirrorSyncResult> {
-  const allMessages: ParsedMirrorMessage[] = [];
-  let currentCursor = fromTimestamp;
-  let totalFetched = 0;
-  let hasMore = true;
+export function decodeBase64Message(base64Message: string): unknown {
+   try {
+     if (!base64Message) {
+       return null;
+     }
 
-  while (hasMore && totalFetched < maxMessages) {
-    const remaining = maxMessages - totalFetched;
-    const batchSize = Math.min(100, remaining);
+     // Decode base64 to string
+     const decoded = Buffer.from(base64Message, 'base64').toString('utf-8');
+     
+     // Parse JSON
+     return JSON.parse(decoded) as unknown;
+   } catch (error) {
+     console.warn('Failed to decode base64 message:', error);
+     return null;
+   }
+ }
+
+/**
+ * Encode JSON payload to base64 for publishing
+ * @param payload - JSON payload to encode
+ * @returns Base64 encoded string
+ */
+export function encodeToBase64(payload: unknown): string {
+   try {
+     const jsonString = JSON.stringify(payload);
+     return Buffer.from(jsonString, 'utf-8').toString('base64');
+   } catch (error) {
+     console.error('Failed to encode payload to base64:', error);
+     throw error;
+   }
+ }
+
+/**
+ * Get topic information from Mirror Node
+ * @param topicId - Hedera topic ID
+ * @returns Topic information
+ */
+export async function getTopicInfo(topicId: string) {
+  try {
+    const url = new URL(`/api/v1/topics/${topicId}`, env.MIRROR_NODE_URL);
     
-    const result = await fetchTopicMessages({
-      topicId,
-      fromTs: currentCursor,
-      limit: batchSize
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
     });
 
-    allMessages.push(...result.messages);
-    totalFetched += result.totalFetched;
-    hasMore = result.hasMore && result.totalFetched > 0;
-    currentCursor = result.lastCursor || undefined;
-
-    // Small delay to avoid rate limiting
-    if (hasMore) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+    if (!response.ok) {
+      throw new Error(`Mirror Node API error: ${response.status} ${response.statusText}`);
     }
-  }
 
-  return {
-    messages: allMessages,
-    totalFetched: allMessages.length,
-    lastCursor: currentCursor || null,
-    hasMore: hasMore && totalFetched >= maxMessages
-  };
+    return await response.json();
+  } catch (error) {
+    console.error('Failed to get topic info:', error);
+    throw error;
+  }
+}
+
+/**
+ * Validate if a timestamp is in correct Hedera format
+ * @param timestamp - Timestamp string to validate
+ * @returns True if valid format (seconds.nanoseconds)
+ */
+export function isValidTimestamp(timestamp: string): boolean {
+  const timestampRegex = /^\d+\.\d{9}$/;
+  return timestampRegex.test(timestamp);
+}
+
+/**
+ * Convert Date to Hedera consensus timestamp format
+ * @param date - Date object
+ * @returns Timestamp in "seconds.nanoseconds" format
+ */
+export function dateToTimestamp(date: Date): string {
+  const seconds = Math.floor(date.getTime() / 1000);
+  const nanoseconds = (date.getTime() % 1000) * 1_000_000;
+  return `${seconds}.${nanoseconds.toString().padStart(9, '0')}`;
+}
+
+/**
+ * Convert Hedera consensus timestamp to Date
+ * @param timestamp - Timestamp in "seconds.nanoseconds" format
+ * @returns Date object
+ */
+export function timestampToDate(timestamp: string): Date {
+  if (!isValidTimestamp(timestamp)) {
+    throw new Error(`Invalid timestamp format: ${timestamp}`);
+  }
+  
+  const [seconds, nanoseconds] = timestamp.split('.');
+  const milliseconds = parseInt(seconds) * 1000 + Math.floor(parseInt(nanoseconds) / 1_000_000);
+  return new Date(milliseconds);
 }

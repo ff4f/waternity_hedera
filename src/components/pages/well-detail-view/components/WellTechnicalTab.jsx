@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import ProofPillComponent from '../../../components/ui/ProofPillComponent';
+import { WellKPISkeleton } from '../../../Skeleton';
 
-const WellTechnicalTab = ({ wellData }) => {
+const WellTechnicalTab = ({ wellData, isLoading = false }) => {
   const [expandedMilestone, setExpandedMilestone] = useState(null);
 
   const technicalSpecs = [
@@ -136,6 +137,15 @@ const WellTechnicalTab = ({ wellData }) => {
         return 'Circle';
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <WellKPISkeleton />
+        <WellKPISkeleton />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

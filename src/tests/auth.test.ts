@@ -11,21 +11,36 @@ describe('Authentication System Tests', () => {
     // Clean up any existing test users
     await prisma.user.deleteMany({
       where: {
-        username: {
-          in: ['testuser', 'adminuser']
+        email: {
+          in: ['testuser@test.com', 'adminuser@test.com']
         }
       }
     });
 
+    // Create test roles
+    const operatorRole = await prisma.role.upsert({
+      where: { name: 'OPERATOR' },
+      update: {},
+      create: { name: 'OPERATOR' }
+    });
+    
+    const adminRole = await prisma.role.upsert({
+      where: { name: 'ADMIN' },
+      update: {},
+      create: { name: 'ADMIN' }
+    });
+
     // Create test users
-    const hashedPassword = await bcrypt.hash('testpassword123', 12);
+    const salt = await bcrypt.genSalt(12);
+    const hashedPassword = await bcrypt.hash('testpassword123', salt);
     
     testUser = await prisma.user.create({
       data: {
         name: 'Test User',
-        username: 'testuser',
-        password: hashedPassword,
-        role: 'OPERATOR',
+        email: 'testuser@test.com',
+        hashedPassword,
+        salt,
+        roleId: operatorRole.id,
         walletEvm: '0x123456789'
       }
     });
@@ -33,9 +48,10 @@ describe('Authentication System Tests', () => {
     adminUser = await prisma.user.create({
       data: {
         name: 'Admin User',
-        username: 'adminuser',
-        password: hashedPassword,
-        role: 'ADMIN',
+        email: 'adminuser@test.com',
+        hashedPassword,
+        salt,
+        roleId: adminRole.id,
         walletEvm: '0x987654321'
       }
     });
@@ -45,8 +61,8 @@ describe('Authentication System Tests', () => {
     // Cleanup
     await prisma.user.deleteMany({
       where: {
-        username: {
-          in: ['testuser', 'adminuser', 'newuser']
+        email: {
+          in: ['testuser@test.com', 'adminuser@test.com', 'newuser@test.com']
         }
       }
     });

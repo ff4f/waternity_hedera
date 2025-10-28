@@ -1,50 +1,383 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "properties": {
-    "messageId": {
-      "type": "string",
-      "minLength": 1
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://waternity.com/schemas/anchor_document.schema.json",
+  "title": "Anchor Document Event Schema",
+  "description": "Schema for document anchoring events on Hedera",
+  "allOf": [
+    {
+      "$ref": "./common.hcs.schema.json"
     },
-    "wellId": {
-      "type": "string",
-      "minLength": 1
-    },
-    "type": {
-      "type": "string",
-      "enum": ["CERTIFICATE", "REPORT", "COMPLIANCE", "AUDIT", "CONTRACT", "OTHER"]
-    },
-    "cid": {
-      "type": "string"
-    },
-    "digestAlgo": {
-      "type": "string",
-      "enum": ["SHA256", "SHA512", "MD5"]
-    },
-    "digestHex": {
-      "type": "string",
-      "minLength": 1
-    },
-    "bundleContentBase64": {
-      "type": "string"
-    },
-    "filename": {
-      "type": "string"
-    },
-    "mimeType": {
-      "type": "string"
-    },
-    "description": {
-      "type": "string"
-    },
-    "anchoredBy": {
-      "type": "string",
-      "minLength": 1
-    },
-    "timestamp": {
-      "type": "string"
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "anchor_document"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "documentId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Unique identifier for the document"
+            },
+            "documentType": {
+              "type": "string",
+              "enum": [
+                "WATER_QUALITY_REPORT",
+                "USAGE_CERTIFICATE",
+                "MAINTENANCE_LOG",
+                "COMPLIANCE_REPORT",
+                "SETTLEMENT_RECEIPT",
+                "AUDIT_REPORT",
+                "PERMIT_DOCUMENT",
+                "INSPECTION_REPORT",
+                "CONTRACT_AGREEMENT",
+                "IDENTITY_VERIFICATION"
+              ],
+              "description": "Type of document being anchored"
+            },
+            "documentHash": {
+              "type": "string",
+              "pattern": "^[a-fA-F0-9]{64}$",
+              "description": "SHA-256 hash of the document content"
+            },
+            "documentSize": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Size of the document in bytes"
+            },
+            "mimeType": {
+              "type": "string",
+              "enum": [
+                "application/pdf",
+                "application/json",
+                "text/plain",
+                "text/csv",
+                "application/xml",
+                "image/jpeg",
+                "image/png",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              ],
+              "description": "MIME type of the document"
+            },
+            "fileName": {
+              "type": "string",
+              "maxLength": 255,
+              "description": "Original filename of the document"
+            },
+            "anchoredBy": {
+              "type": "string",
+              "description": "ID of the user who anchored the document"
+            },
+            "anchorTimestamp": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When the document was anchored"
+            },
+            "hederaDetails": {
+              "type": "object",
+              "properties": {
+                "topicId": {
+                  "type": "string",
+                  "pattern": "^0\\.0\\.[0-9]+$",
+                  "description": "Hedera Consensus Service topic ID"
+                },
+                "sequenceNumber": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "HCS message sequence number"
+                },
+                "consensusTimestamp": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Hedera consensus timestamp"
+                },
+                "transactionId": {
+                  "type": "string",
+                  "description": "Hedera transaction ID for the anchoring"
+                },
+                "runningHash": {
+                  "type": "string",
+                  "pattern": "^[a-fA-F0-9]{96}$",
+                  "description": "HCS running hash (48 bytes in hex)"
+                }
+              },
+              "required": ["topicId", "consensusTimestamp"],
+              "additionalProperties": false
+            },
+            "storageDetails": {
+              "type": "object",
+              "properties": {
+                "storageProvider": {
+                  "type": "string",
+                  "enum": ["IPFS", "HEDERA_FILE_SERVICE", "AWS_S3", "ARWEAVE", "LOCAL"],
+                  "description": "Where the document is stored"
+                },
+                "storageReference": {
+                  "type": "string",
+                  "description": "Reference to the stored document (IPFS hash, file ID, etc.)"
+                },
+                "accessUrl": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL to access the document"
+                },
+                "encryptionStatus": {
+                  "type": "string",
+                  "enum": ["NONE", "AES_256", "RSA_2048", "HYBRID"],
+                  "description": "Encryption method used for storage"
+                },
+                "accessControl": {
+                  "type": "object",
+                  "properties": {
+                    "isPublic": {
+                      "type": "boolean",
+                      "description": "Whether document is publicly accessible"
+                    },
+                    "authorizedUsers": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "User IDs with access to the document"
+                      },
+                      "description": "List of users authorized to access the document"
+                    },
+                    "authorizedRoles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["ADMIN", "OPERATOR", "AUDITOR", "VIEWER", "WELL_OWNER"],
+                        "description": "Roles authorized to access the document"
+                      },
+                      "description": "List of roles authorized to access the document"
+                    },
+                    "expirationDate": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When access expires (if applicable)"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "required": ["storageProvider", "storageReference"],
+              "additionalProperties": false
+            },
+            "documentMetadata": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "maxLength": 200,
+                  "description": "Document title"
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "description": "Document description"
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 50
+                  },
+                  "maxItems": 10,
+                  "description": "Tags for document categorization"
+                },
+                "relatedEntities": {
+                  "type": "object",
+                  "properties": {
+                    "wellIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "Well IDs related to this document"
+                      }
+                    },
+                    "settlementIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Settlement IDs related to this document"
+                      }
+                    },
+                    "userIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "User IDs related to this document"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "validityPeriod": {
+                  "type": "object",
+                  "properties": {
+                    "validFrom": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When document becomes valid"
+                    },
+                    "validUntil": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When document expires"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "complianceInfo": {
+                  "type": "object",
+                  "properties": {
+                    "regulatoryFramework": {
+                      "type": "string",
+                      "description": "Applicable regulatory framework"
+                    },
+                    "complianceStatus": {
+                      "type": "string",
+                      "enum": ["COMPLIANT", "NON_COMPLIANT", "PENDING_REVIEW", "EXPIRED"],
+                      "description": "Compliance status of the document"
+                    },
+                    "certificationBody": {
+                      "type": "string",
+                      "description": "Organization that certified the document"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "verificationDetails": {
+              "type": "object",
+              "properties": {
+                "digitalSignature": {
+                  "type": "object",
+                  "properties": {
+                    "algorithm": {
+                      "type": "string",
+                      "enum": ["RSA_SHA256", "ECDSA_SHA256", "ED25519"],
+                      "description": "Digital signature algorithm used"
+                    },
+                    "signature": {
+                      "type": "string",
+                      "description": "Base64 encoded digital signature"
+                    },
+                    "publicKey": {
+                      "type": "string",
+                      "description": "Public key used for verification"
+                    },
+                    "signedBy": {
+                      "type": "string",
+                      "description": "ID of the signer"
+                    },
+                    "signatureTimestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When the document was signed"
+                    }
+                  },
+                  "required": ["algorithm", "signature", "signedBy"],
+                  "additionalProperties": false
+                },
+                "witnessSignatures": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "witnessId": {
+                        "type": "string",
+                        "description": "ID of the witness"
+                      },
+                      "signature": {
+                        "type": "string",
+                        "description": "Witness signature"
+                      },
+                      "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "When witness signed"
+                      }
+                    },
+                    "required": ["witnessId", "signature", "timestamp"],
+                    "additionalProperties": false
+                  },
+                  "description": "Additional witness signatures"
+                },
+                "timestampAuthority": {
+                  "type": "object",
+                  "properties": {
+                    "authority": {
+                      "type": "string",
+                      "description": "Timestamp authority name"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Trusted timestamp"
+                    },
+                    "token": {
+                      "type": "string",
+                      "description": "Timestamp token"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "auditTrail": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": ["CREATED", "MODIFIED", "ACCESSED", "SHARED", "VERIFIED", "ARCHIVED"],
+                    "description": "Action performed on the document"
+                  },
+                  "performedBy": {
+                    "type": "string",
+                    "description": "User who performed the action"
+                  },
+                  "timestamp": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the action was performed"
+                  },
+                  "details": {
+                    "type": "string",
+                    "description": "Additional details about the action"
+                  },
+                  "ipAddress": {
+                    "type": "string",
+                    "format": "ipv4",
+                    "description": "IP address from which action was performed"
+                  }
+                },
+                "required": ["action", "performedBy", "timestamp"],
+                "additionalProperties": false
+              },
+              "description": "Audit trail of document actions"
+            }
+          },
+          "required": [
+            "documentId",
+            "documentType",
+            "documentHash",
+            "anchoredBy",
+            "anchorTimestamp",
+            "hederaDetails",
+            "storageDetails"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": ["eventType", "data"]
     }
-  },
-  "required": ["messageId", "wellId", "type", "digestAlgo", "digestHex", "anchoredBy"],
-  "additionalProperties": false
+  ]
 }

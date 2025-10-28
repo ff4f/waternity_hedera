@@ -1,226 +1,135 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db/prisma'
-import { env } from '@/lib/env'
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { Client, AccountId, PrivateKey } from '@hashgraph/sdk';
+import { runSeed } from '../../../../prisma/seed';
 
-// Health check response interface
-interface HealthCheckResponse {
-  status: 'healthy' | 'unhealthy'
-  timestamp: string
-  version: string
-  environment: string
-  services: {
-    database: {
-      status: 'connected' | 'disconnected' | 'error'
-      latency?: number
-      error?: string
-    }
-    hedera: {
-      network: string
-      mirrorNode: {
-        status: 'reachable' | 'unreachable' | 'error'
-        latency?: number
-        error?: string
-      }
-    }
-  }
-  uptime: number
-  memory: {
-    used: number
-    total: number
-    percentage: number
-  }
-}
-
-// Store application start time for uptime calculation
-const startTime = Date.now()
-
-// Database health check
-async function checkDatabaseHealth() {
-  try {
-    const startTime = Date.now()
-    
-    // Simple query to check database connectivity
-    await prisma.$queryRaw`SELECT 1`
-    
-    const latency = Date.now() - startTime
-    
-    return {
-      status: 'connected' as const,
-      latency
-    }
-  } catch (error) {
-    console.error('Database health check failed:', error)
-    return {
-      status: 'error' as const,
-      error: error instanceof Error ? error.message : 'Unknown database error'
-    }
-  }
-}
-
-// Hedera Mirror Node health check
-async function checkHederaMirrorNodeHealth() {
-  try {
-    const startTime = Date.now()
-    
-    // Check Mirror Node API endpoint
-    const response = await fetch(`${env.MIRROR_NODE_URL}/network/nodes`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Waternity-HealthCheck/1.0'
-      },
-      // Set timeout to 5 seconds
-      signal: AbortSignal.timeout(5000)
-    })
-    
-    const latency = Date.now() - startTime
-    
-    if (response.ok) {
-      return {
-        status: 'reachable' as const,
-        latency
-      }
-    } else {
-      return {
-        status: 'error' as const,
-        error: `HTTP ${response.status}: ${response.statusText}`
-      }
-    }
-  } catch (error) {
-    console.error('Hedera Mirror Node health check failed:', error)
-    return {
-      status: 'error' as const,
-      error: error instanceof Error ? error.message : 'Unknown Mirror Node error'
-    }
-  }
-}
-
-// Memory usage calculation
-function getMemoryUsage() {
-  const memUsage = process.memoryUsage()
-  const totalMemory = memUsage.heapTotal
-  const usedMemory = memUsage.heapUsed
-  
-  return {
-    used: Math.round(usedMemory / 1024 / 1024), // MB
-    total: Math.round(totalMemory / 1024 / 1024), // MB
-    percentage: Math.round((usedMemory / totalMemory) * 100)
-  }
-}
-
-// GET /api/health - Health check endpoint
+/**
+ * GET /api/health
+ * Health check endpoint that verifies:
+ * - Hedera environment variables and SDK readiness
+ * - Database connectivity (Prisma)
+ * Returns 200 with ok:false for missing env, or 503 for connectivity issues
+ */
 export async function GET(request: NextRequest) {
+  console.log('[HEALTH] Health check initiated');
+  
+  // Auto-init database on first run (demo mode)
   try {
-    // Run health checks in parallel
-    const [databaseHealth, mirrorNodeHealth] = await Promise.all([
-      checkDatabaseHealth(),
-      checkHederaMirrorNodeHealth()
-    ])
-    
-    // Calculate uptime
-    const uptime = Math.floor((Date.now() - startTime) / 1000) // seconds
-    
-    // Get memory usage
-    const memory = getMemoryUsage()
-    
-    // Determine overall health status
-    const isHealthy = 
-      databaseHealth.status === 'connected' &&
-      mirrorNodeHealth.status === 'reachable'
-    
-    const healthResponse: HealthCheckResponse = {
-      status: isHealthy ? 'healthy' : 'unhealthy',
-      timestamp: new Date().toISOString(),
-      version: process.env.npm_package_version || '1.0.0',
-      environment: env.NODE_ENV,
-      services: {
-        database: databaseHealth,
-        hedera: {
-          network: env.HEDERA_NETWORK,
-          mirrorNode: mirrorNodeHealth
-        }
-      },
-      uptime,
-      memory
+    const roles = await prisma.role.count();
+    if (roles === 0) {
+      console.log('[HEALTH] Empty DB detected. Running seed for demo...');
+      await runSeed();
+      console.log('[HEALTH] Seed completed');
     }
-    
-    // Return appropriate HTTP status code
-    const statusCode = isHealthy ? 200 : 503
-    
-    return NextResponse.json(healthResponse, { 
-      status: statusCode,
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
-    })
-    
-  } catch (error) {
-    console.error('Health check endpoint error:', error)
-    
-    // Return error response
-    const errorResponse: HealthCheckResponse = {
-      status: 'unhealthy',
-      timestamp: new Date().toISOString(),
-      version: process.env.npm_package_version || '1.0.0',
-      environment: env.NODE_ENV,
-      services: {
-        database: {
-          status: 'error',
-          error: 'Health check failed'
-        },
-        hedera: {
-          network: env.HEDERA_NETWORK,
-          mirrorNode: {
-            status: 'error',
-            error: 'Health check failed'
-          }
-        }
-      },
-      uptime: Math.floor((Date.now() - startTime) / 1000),
-      memory: getMemoryUsage()
-    }
-    
-    return NextResponse.json(errorResponse, { 
-      status: 500,
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
-    })
+  } catch (e) {
+    console.warn('[HEALTH] Seed check failed:', e);
   }
+  
+  // Check Hedera environment variables
+  const hederaEnvVars = ['HEDERA_NETWORK', 'HEDERA_ACCOUNT_ID', 'HEDERA_PRIVATE_KEY'];
+  const missingHederaVars = hederaEnvVars.filter(envVar => !process.env[envVar]);
+  const hederaEnvValid = missingHederaVars.length === 0;
+  
+  // Determine network
+  let network: 'testnet' | 'mainnet' | 'unknown' = 'unknown';
+  if (process.env.HEDERA_NETWORK) {
+    const networkValue = process.env.HEDERA_NETWORK.toLowerCase();
+    if (networkValue === 'testnet' || networkValue === 'mainnet') {
+      network = networkValue;
+    }
+  }
+  
+  // Test Hedera SDK readiness
+  let sdkReady = false;
+  if (hederaEnvValid) {
+    try {
+      // Validate account ID and private key format
+      AccountId.fromString(process.env.HEDERA_ACCOUNT_ID!);
+      PrivateKey.fromString(process.env.HEDERA_PRIVATE_KEY!);
+      
+      // Create client to test SDK initialization
+      const client = network === 'testnet' ? Client.forTestnet() : Client.forMainnet();
+      client.setOperator(
+        AccountId.fromString(process.env.HEDERA_ACCOUNT_ID!),
+        PrivateKey.fromString(process.env.HEDERA_PRIVATE_KEY!)
+      );
+      client.close();
+      
+      sdkReady = true;
+    } catch (error) {
+      console.log('[HEALTH] Hedera SDK validation failed:', error instanceof Error ? error.message : 'Unknown error');
+      sdkReady = false;
+    }
+  }
+  
+  // Test database connectivity
+  let dbConnected = false;
+  try {
+    console.log('[HEALTH] Testing database connectivity');
+    await prisma.$queryRaw`SELECT 1`;
+    dbConnected = true;
+  } catch (error) {
+    console.error('[HEALTH] Database connectivity failed:', error);
+    dbConnected = false;
+  }
+  
+  // Determine overall health status
+  const overallOk = hederaEnvValid && sdkReady && dbConnected;
+  
+  const response = {
+    ok: overallOk,
+    hedera: {
+      env: hederaEnvValid,
+      network,
+      sdkReady
+    },
+    db: {
+      connected: dbConnected
+    }
+  };
+  
+  // Return 503 for connectivity issues, 200 for env issues
+  if (!dbConnected) {
+    console.log('[HEALTH] Health check failed - database connectivity issue');
+    return NextResponse.json(response, { status: 503 });
+  }
+  
+  if (!overallOk) {
+    console.log('[HEALTH] Health check completed with issues - missing env or SDK not ready');
+  } else {
+    console.log('[HEALTH] Health check completed successfully');
+  }
+  
+  return NextResponse.json(response, { status: 200 });
 }
 
-// HEAD /api/health - Lightweight health check for load balancers
-export async function HEAD(request: NextRequest) {
-  try {
-    // Quick database connectivity check
-    await prisma.$queryRaw`SELECT 1`
-    
-    return new NextResponse(null, { 
-      status: 200,
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate'
-      }
-    })
-  } catch (error) {
-    console.error('Health check HEAD request failed:', error)
-    return new NextResponse(null, { status: 503 })
-  }
+/**
+ * Handle unsupported HTTP methods
+ */
+export async function POST() {
+  return NextResponse.json(
+    { error: 'method_not_allowed', message: 'Method not allowed' },
+    { status: 405 }
+  );
 }
 
-// OPTIONS /api/health - CORS preflight
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Allow': 'GET, HEAD, OPTIONS',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Cache-Control': 'no-cache'
-    }
-  })
+export async function PUT() {
+  return NextResponse.json(
+    { error: 'method_not_allowed', message: 'Method not allowed' },
+    { status: 405 }
+  );
+}
+
+export async function DELETE() {
+  return NextResponse.json(
+    { error: 'method_not_allowed', message: 'Method not allowed' },
+    { status: 405 }
+  );
+}
+
+export async function PATCH() {
+  return NextResponse.json(
+    { error: 'method_not_allowed', message: 'Method not allowed' },
+    { status: 405 }
+  );
 }

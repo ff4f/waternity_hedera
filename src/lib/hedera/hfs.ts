@@ -1,169 +1,103 @@
-import {
-  FileCreateTransaction,
-  FileAppendTransaction,
-  Hbar,
-  Client,
-} from "@hashgraph/sdk";
-import { createHash } from "crypto";
-
-const MAX_FILE_SIZE = 4096; // 4KB, leaving some buffer for safety
-const MAX_SINGLE_FILE_SIZE = 900_000; // 900KB limit for single file creation
+import { FileCreateTransaction, FileAppendTransaction, FileId } from "@hashgraph/sdk";
+import { createHederaClient } from "./client";
+import { sha256Hex } from "@/lib/hash";
 
 /**
- * Creates or appends a file on Hedera File Service based on size.
- * If bytes.length <= 900,000 → FileCreateTransaction with full contents.
- * Else: create + chunked FileAppendTransaction until complete.
- *
- * @param {Uint8Array} bytes - The content bytes to store
- * @param {Client} client - The Hedera client
- * @returns {Promise<{fileId: string, receipt: any, hashscanFileUrl: string}>} - The file ID, receipt, and hashscan URL
+ * Create or append content to a Hedera File Service (HFS) file
+ * @param bytes - File content as Uint8Array
+ * @param existingFileId - Optional existing file ID to append to
+ * @returns File ID of created or updated file
  */
-export async function createOrAppendFile(bytes: Uint8Array, client: Client) {
-  const operatorId = client.operatorAccountId;
-  const operatorKey = client.operatorPublicKey;
-
-  if (!operatorId || !operatorKey) {
-    throw new Error("Client is not configured with an operator.");
-  }
-
-  let fileId;
-  let receipt;
-
-  if (bytes.length <= MAX_SINGLE_FILE_SIZE) {
-    // Single file creation for files <= 900KB
-    const createFileTx = new FileCreateTransaction()
-      .setKeys([operatorKey])
-      .setContents(bytes)
-      .setMaxTransactionFee(new Hbar(5));
-
-    const createFileResponse = await createFileTx.execute(client);
-    receipt = await createFileResponse.getReceipt(client);
-    fileId = receipt.fileId;
-  } else {
-    // Chunked file creation for files > 900KB
-    const firstChunk = bytes.slice(0, MAX_FILE_SIZE);
-    const remainingContent = bytes.slice(MAX_FILE_SIZE);
-
-    const createFileTx = new FileCreateTransaction()
-      .setKeys([operatorKey])
-      .setContents(firstChunk)
-      .setMaxTransactionFee(new Hbar(5));
-
-    const createFileResponse = await createFileTx.execute(client);
-    receipt = await createFileResponse.getReceipt(client);
-    fileId = receipt.fileId;
-
-    if (!fileId) {
-      throw new Error("File creation failed at initial chunk.");
-    }
-
-    // Append remaining chunks
-    for (let i = 0; i < remainingContent.length; i += MAX_FILE_SIZE) {
-      const chunk = remainingContent.slice(i, i + MAX_FILE_SIZE);
+export async function createOrAppendFile(
+  bytes: Uint8Array,
+  existingFileId?: string
+): Promise<string> {
+  const client = createHederaClient();
+  
+  try {
+    if (existingFileId) {
+      // Append to existing file
+      const fileId = FileId.fromString(existingFileId);
+      
       const appendTx = new FileAppendTransaction()
         .setFileId(fileId)
-        .setContents(chunk)
-        .setMaxTransactionFee(new Hbar(5));
-      await (await appendTx.execute(client)).getReceipt(client);
+        .setContents(bytes)
+        .setMaxTransactionFee(100_000_000); // 1 HBAR
+      
+      const appendResponse = await appendTx.execute(client);
+      const appendReceipt = await appendResponse.getReceipt(client);
+      
+      if (appendReceipt.status.toString() !== "SUCCESS") {
+        throw new Error(`File append failed: ${appendReceipt.status}`);
+      }
+      
+      return existingFileId;
+    } else {
+      // Create new file
+      const createTx = new FileCreateTransaction()
+        .setContents(bytes)
+        .setMaxTransactionFee(100_000_000); // 1 HBAR
+      
+      const createResponse = await createTx.execute(client);
+      const createReceipt = await createResponse.getReceipt(client);
+      
+      if (createReceipt.status.toString() !== "SUCCESS") {
+        throw new Error(`File creation failed: ${createReceipt.status}`);
+      }
+      
+      const fileId = createReceipt.fileId;
+      if (!fileId) {
+        throw new Error("File ID not returned from creation");
+      }
+      
+      return fileId.toString();
     }
+  } catch (error) {
+    console.error("HFS operation failed:", error);
+    throw error;
   }
-
-  if (!fileId) {
-    throw new Error("File creation failed.");
-  }
-
-  const network = client.networkName;
-  const hashscanFileUrl = `https://hashscan.io/${network}/file/${fileId.toString()}`;
-
-  return {
-    fileId: fileId.toString(),
-    receipt,
-    hashscanFileUrl,
-  };
 }
 
 /**
- * Bundles a monthly report into a file on Hedera File Service.
- * If the content is larger than MAX_FILE_SIZE, it will be split into chunks.
- *
- * @param {object} params - The parameters for bundling the report.
- * @param {string} params.wellId - The ID of the well.
- * @param {Uint8Array} params.contentBytes - The content of the report in bytes.
- * @param {Client} params.client - The Hedera client.
- * @returns {Promise<{fileId: string, hashscanFileUrl: string}>} - The file ID and the hashscan URL.
+ * Calculate SHA256 hash of file content
+ * @param bytes - File content as Uint8Array
+ * @returns SHA256 hash as hex string
  */
-export async function bundleMonthlyReport({ wellId, contentBytes, client }: { wellId: string, contentBytes: Uint8Array, client: Client }) {
-  const operatorId = client.operatorAccountId;
-  const operatorKey = client.operatorPublicKey;
-
-  if (!operatorId || !operatorKey) {
-    throw new Error("Client is not configured with an operator.");
-  }
-
-  let fileId;
-
-  if (contentBytes.length > MAX_FILE_SIZE) {
-    // Chunked file creation
-    const firstChunk = contentBytes.slice(0, MAX_FILE_SIZE);
-    const remainingContent = contentBytes.slice(MAX_FILE_SIZE);
-
-    const createFileTx = new FileCreateTransaction()
-      .setKeys([operatorKey])
-      .setContents(firstChunk)
-      .setFileMemo(`Water Well ${wellId} - Monthly Report`)
-      .setMaxTransactionFee(new Hbar(5)); // Increased fee for larger transaction
-
-    const createFileResponse = await createFileTx.execute(client);
-    const createFileReceipt = await createFileResponse.getReceipt(client);
-    fileId = createFileReceipt.fileId;
-
-    if (!fileId) {
-      throw new Error("File creation failed at initial chunk.");
-    }
-
-    // Append remaining chunks
-    for (let i = 0; i < remainingContent.length; i += MAX_FILE_SIZE) {
-      const chunk = remainingContent.slice(i, i + MAX_FILE_SIZE);
-      const appendTx = new FileAppendTransaction()
-        .setFileId(fileId)
-        .setContents(chunk)
-        .setMaxTransactionFee(new Hbar(5));
-      await (await appendTx.execute(client)).getReceipt(client);
-    }
-  } else {
-    // Single file creation
-    const createFileTx = new FileCreateTransaction()
-      .setKeys([operatorKey])
-      .setContents(contentBytes)
-      .setFileMemo(`Water Well ${wellId} - Monthly Report`)
-      .setMaxTransactionFee(new Hbar(2));
-
-    const createFileResponse = await createFileTx.execute(client);
-    const createFileReceipt = await createFileResponse.getReceipt(client);
-    fileId = createFileReceipt.fileId;
-  }
-
-  if (!fileId) {
-    throw new Error("File creation failed.");
-  }
-
-  const network = client.networkName;
-  const hashscanFileUrl = `https://hashscan.io/${network}/file/${fileId.toString()}`;
-
-  return {
-    fileId: fileId.toString(),
-    hashscanFileUrl,
-  };
+export function calculateFileHash(bytes: Uint8Array): string {
+  return sha256Hex(Buffer.from(bytes));
 }
 
 /**
- * Computes SHA256 hash of bytes and returns as hex string.
- *
- * @param {Uint8Array} bytes - The bytes to hash
- * @returns {string} - The SHA256 hash as hex string
+ * Get file info from HFS (placeholder for future implementation)
+ * @param fileId - HFS file ID
+ * @returns File information
  */
-export function sha256Hex(bytes: Uint8Array): string {
-  const hash = createHash('sha256');
-  hash.update(bytes);
-  return hash.digest('hex');
+export async function getFileInfo(fileId: string) {
+  // TODO: Implement file info retrieval when needed
+  // This would use FileInfoQuery from Hedera SDK
+  throw new Error(`File info retrieval not yet implemented for ${fileId}`);
+}
+
+/**
+ * Convert base64 string to Uint8Array
+ * @param base64 - Base64 encoded string
+ * @returns Uint8Array
+ */
+export function base64ToBytes(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Convert Uint8Array to base64 string
+ * @param bytes - Uint8Array
+ * @returns Base64 encoded string
+ */
+export function bytesToBase64(bytes: Uint8Array): string {
+  const binaryString = Array.from(bytes, byte => String.fromCharCode(byte)).join('');
+  return btoa(binaryString);
 }

@@ -1,24 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import { getSessionFromRequest } from '@/lib/auth/session';
-import { Role } from '@/lib/types';
+import { getUserFromRequest } from '@/lib/auth/session';
+import { requireUser, assertRole, createUnauthorizedResponse, createForbiddenResponse, AuthenticationError, AuthorizationError } from '@/lib/auth/roles';
+
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  console.log('[USERS] GET /api/users/[id] - Fetching user profile');
+  
   try {
     // Require authentication for user data access
-    const authUser = await getSessionFromRequest(request);
+    const authUser = await getUserFromRequest(request);
     if (!authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
     const userId = params.id;
 
+    // Check if user can access this profile (self or admin)
+    if (authUser.id !== userId && authUser.role?.name !== 'ADMIN') {
+      console.log('[USERS] Access denied for user:', authUser.id, 'requesting profile:', userId);
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
+        role: true,
         memberships: {
           include: {
             well: {
@@ -55,10 +65,8 @@ export async function GET(
     });
 
     if (!user) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      );
+      console.log('[USERS] User not found:', userId);
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     // Calculate investment statistics
@@ -166,7 +174,7 @@ export async function GET(
     const userData = {
       id: user.id,
       name: user.name,
-      accountId: user.accountId || '0.0.unknown',
+      accountId: user.hederaAccountId || '0.0.unknown',
       role: user.role || 'USER',
       createdAt: user.createdAt,
       stats: {
@@ -177,7 +185,7 @@ export async function GET(
       },
       investments,
       recentPayouts: validUserPayouts,
-      operatedWells: user.role === 'OPERATOR' ? user.wells.map(well => ({
+      operatedWells: user.role?.name === 'OPERATOR' ? user.wells.map(well => ({
         id: well.id,
         code: well.code,
         name: well.name,
@@ -193,12 +201,77 @@ export async function GET(
       })) : []
     };
 
+    console.log('[USERS] User profile fetched successfully:', userId);
     return NextResponse.json(userData);
   } catch (error) {
-    console.error('Error fetching user data:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch user data' },
-      { status: 500 }
-    );
+    console.error('[USERS] Error fetching user:', error);
+    return NextResponse.json({ error: 'Failed to fetch user data' }, { status: 500 });
+  }
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  console.log('[USERS] PUT /api/users/[id] - Updating user profile');
+  
+  try {
+    // Require authentication for user data updates
+    const authUser = await getUserFromRequest(request);
+    if (!authUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    const userId = params.id;
+
+    // Check if user can update this profile (self or admin)
+    if (authUser.id !== userId && authUser.role?.name !== 'ADMIN') {
+      console.log('[USERS] Update access denied for user:', authUser.id, 'requesting profile:', userId);
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { name, email } = body;
+
+    // Validate input
+    if (!name || !email) {
+      return NextResponse.json({ error: 'Name and email are required' }, { status: 400 });
+    }
+
+    // Check if email is already taken by another user
+    if (email !== authUser.email) {
+      const existingUser = await prisma.user.findUnique({
+        where: { email }
+      });
+      
+      if (existingUser && existingUser.id !== userId) {
+        return NextResponse.json({ error: 'Email is already taken' }, { status: 400 });
+      }
+    }
+
+    // Update user profile
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        name,
+        email
+      },
+      include: {
+        role: true
+      }
+    });
+
+    console.log('[USERS] User profile updated successfully:', userId);
+    return NextResponse.json({
+      id: updatedUser.id,
+      email: updatedUser.email,
+      name: updatedUser.name,
+      role: updatedUser.role,
+      hederaAccountId: updatedUser.hederaAccountId,
+      createdAt: updatedUser.createdAt
+    });
+  } catch (error) {
+    console.error('[USERS] Error updating user:', error);
+    return NextResponse.json({ error: 'Failed to update user profile' }, { status: 500 });
   }
 }

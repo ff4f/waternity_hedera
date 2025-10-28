@@ -177,13 +177,23 @@ describe('Settlement Workflow Integration Tests', () => {
     
     try {
       // Create test user (operator)
+      // Ensure USER role exists
+      const userRole = await prisma.role.upsert({
+        where: { name: 'USER' },
+        update: {},
+        create: {
+          name: 'USER'
+        }
+      });
+
       const testUser = await prisma.user.create({
         data: {
           name: 'Test User - Settlement Operator',
-          username: `settlement_operator_${Date.now()}`,
-          password: 'test_password_123',
+          email: `settlement_operator_${Date.now()}@test.com`,
+          hashedPassword: 'test_password_123',
+          salt: 'test_salt',
           walletEvm: operatorAccountId.toString(),
-          role: 'USER'
+          roleId: userRole.id
         }
       });
 
@@ -240,10 +250,11 @@ describe('Settlement Workflow Integration Tests', () => {
         const investorUser = await prisma.user.create({
           data: {
             name: investor.name,
-            username: `investor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            password: 'test_password_123',
+            email: `investor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}@test.com`,
+            hashedPassword: 'test_password_123',
+            salt: 'test_salt',
             walletEvm: operatorAccountId.toString(), // Using same account for testing
-            role: 'USER'
+            roleId: userRole.id
           }
         });
 
@@ -792,13 +803,23 @@ describe('Settlement Workflow Integration Tests', () => {
       // in a single test to verify the entire process works together
       
       // Step 1: Create a new well for E2E testing
+      // Ensure USER role exists
+      const userRoleE2E = await prisma.role.upsert({
+        where: { name: 'USER' },
+        update: {},
+        create: {
+          name: 'USER'
+        }
+      });
+
       const testUser = await prisma.user.create({
         data: {
           name: 'Test User - E2E Operator',
-          username: `e2e_operator_${Date.now()}`,
-          password: 'test_password_123',
+          email: `e2e_operator_${Date.now()}@test.com`,
+          hashedPassword: 'test_password_123',
+          salt: 'test_salt',
           walletEvm: operatorAccountId.toString(),
-          role: 'USER'
+          roleId: userRoleE2E.id
         }
       });
 

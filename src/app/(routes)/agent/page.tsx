@@ -2,6 +2,7 @@ import { Metadata } from 'next'
 import Link from 'next/link'
 import DocumentAnchorForm from '@/components/forms/DocumentAnchorForm'
 import SettlementWizard from '@/components/settlement/SettlementWizard'
+import { getStatusColor } from '@/lib/ui'
 
 export const metadata: Metadata = {
   title: 'Agent Interface - Waternity',
@@ -142,16 +143,7 @@ function getTaskTypeColor(taskType: string): string {
 }
 
 function getResultColor(result: string): string {
-  switch (result) {
-    case 'approved':
-      return 'status-executed'
-    case 'rejected':
-      return 'status-failed'
-    case 'pending':
-      return 'status-pending'
-    default:
-      return 'status-inactive'
-  }
+  return getStatusColor(result)
 }
 
 function getDaysUntilDue(dueDate: Date): number {

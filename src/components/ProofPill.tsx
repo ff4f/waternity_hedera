@@ -1,173 +1,92 @@
-'use client';
-
-import React, { useEffect, useState } from 'react';
-import { Copy, ExternalLink, Check } from 'lucide-react';
+import React, { useState } from 'react';
 
 interface ProofPillProps {
-  wellId: string;
-  className?: string;
+  hashscanUrl?: string;
+  mirrorUrl?: string;
+  idLabel?: string;
+  txId?: string; // legacy support
 }
 
-interface MetaLinks {
-  hashscan: {
-    topic?: string;
-    token?: string;
-    file?: string;
-  };
-  mirror: {
-    topic?: string;
-  };
-}
+const ProofPill: React.FC<ProofPillProps> = ({ hashscanUrl, mirrorUrl, idLabel = 'ID', txId }) => {
+  const [copied, setCopied] = useState<string | null>(null);
 
-export function ProofPill({ wellId, className = '' }: ProofPillProps) {
-  const [metaLinks, setMetaLinks] = useState<MetaLinks | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchMetaLinks = async () => {
-      try {
-        const response = await fetch(`/api/meta/links?wellId=${wellId}`);
-        if (response.ok) {
-          const data = await response.json();
-          setMetaLinks(data);
-        }
-      } catch (error) {
-        console.error('Failed to fetch meta links:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchMetaLinks();
-  }, [wellId]);
-
-  const copyToClipboard = async (text: string, id: string) => {
+  const copyToClipboard = async (text: string, type: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 2000);
-    } catch (error) {
-      console.error('Failed to copy to clipboard:', error);
+      setCopied(type);
+      setTimeout(() => setCopied(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
     }
   };
 
-  if (loading) {
-    return (
-      <div className={`flex items-center gap-2 ${className}`}>
-        <div className="animate-pulse bg-gray-200 h-6 w-20 rounded"></div>
-        <div className="animate-pulse bg-gray-200 h-6 w-16 rounded"></div>
-      </div>
-    );
-  }
+  const extractId = (url: string) => {
+    // Extract ID from URL (last segment after last slash)
+    const segments = url.split('/');
+    return segments[segments.length - 1] || url;
+  };
 
-  if (!metaLinks) {
+  // Allow rendering when only txId present
+  if (!hashscanUrl && !mirrorUrl && !txId) {
     return null;
   }
 
-  const hashscanTopicUrl = metaLinks.hashscan.topic 
-    ? `https://hashscan.io/mainnet/topic/${metaLinks.hashscan.topic}`
-    : null;
-  
-  const mirrorTopicUrl = metaLinks.mirror.topic 
-    ? `https://mainnet-public.mirrornode.hedera.com/api/v1/topics/${metaLinks.mirror.topic}/messages`
-    : null;
+  // Synthesize hashscan url from txId if provided
+  const resolvedHashscanUrl = hashscanUrl || (txId ? `https://hashscan.io/testnet/transaction/${encodeURIComponent(txId)}` : undefined);
 
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
-      {/* HashScan Chip */}
-      {hashscanTopicUrl && (
-        <div className="flex items-center bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
-          <a
-            href={hashscanTopicUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-blue-700 hover:text-blue-900 text-sm font-medium"
-          >
-            HashScan
-            <ExternalLink className="w-3 h-3" />
-          </a>
-          {metaLinks.hashscan.topic && (
-            <button
-              onClick={() => copyToClipboard(metaLinks.hashscan.topic!, 'topic')}
-              className="ml-2 text-blue-600 hover:text-blue-800 transition-colors"
-              title="Copy Topic ID"
-            >
-              {copiedId === 'topic' ? (
-                <Check className="w-3 h-3" />
-              ) : (
-                <Copy className="w-3 h-3" />
-              )}
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Mirror Chip */}
-      {mirrorTopicUrl && (
-        <div className="flex items-center bg-green-50 border border-green-200 rounded-full px-3 py-1">
-          <a
-            href={mirrorTopicUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-green-700 hover:text-green-900 text-sm font-medium"
-          >
-            Mirror
-            <ExternalLink className="w-3 h-3" />
-          </a>
-          {metaLinks.mirror.topic && (
-            <button
-              onClick={() => copyToClipboard(metaLinks.mirror.topic!, 'mirror')}
-              className="ml-2 text-green-600 hover:text-green-800 transition-colors"
-              title="Copy Topic ID"
-            >
-              {copiedId === 'mirror' ? (
-                <Check className="w-3 h-3" />
-              ) : (
-                <Copy className="w-3 h-3" />
-              )}
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Token ID Copy (if available) */}
-      {metaLinks.hashscan.token && (
-        <div className="flex items-center bg-purple-50 border border-purple-200 rounded-full px-3 py-1">
-          <span className="text-purple-700 text-sm font-medium mr-1">Token</span>
+    <div className="inline-flex items-center gap-2 bg-gray-100 rounded-lg p-2 text-sm">
+      <span className="text-gray-600 font-medium">{idLabel}:</span>
+      
+      {resolvedHashscanUrl && (
+        <div className="flex items-center gap-1">
           <button
-            onClick={() => copyToClipboard(metaLinks.hashscan.token!, 'token')}
-            className="text-purple-600 hover:text-purple-800 transition-colors"
-            title="Copy Token ID"
+            onClick={() => window.open(resolvedHashscanUrl, '_blank')}
+            className="px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-xs font-medium"
           >
-            {copiedId === 'token' ? (
-              <Check className="w-3 h-3" />
+            Hashscan
+          </button>
+          <button
+            onClick={() => copyToClipboard(extractId(resolvedHashscanUrl), 'hashscan')}
+            className="p-1 text-gray-500 hover:text-gray-700 transition-colors"
+            title="Copy ID"
+          >
+            {copied === 'hashscan' ? (
+              <span className="text-green-500 text-xs">✓</span>
             ) : (
-              <Copy className="w-3 h-3" />
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
             )}
           </button>
         </div>
       )}
-
-      {/* File ID Copy (if available) */}
-      {metaLinks.hashscan.file && (
-        <div className="flex items-center bg-orange-50 border border-orange-200 rounded-full px-3 py-1">
-          <span className="text-orange-700 text-sm font-medium mr-1">File</span>
+      
+      {mirrorUrl && (
+        <div className="flex items-center gap-1">
           <button
-            onClick={() => copyToClipboard(metaLinks.hashscan.file!, 'file')}
-            className="text-orange-600 hover:text-orange-800 transition-colors"
-            title="Copy File ID"
+            onClick={() => window.open(mirrorUrl, '_blank')}
+            className="px-2 py-1 bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors text-xs font-medium"
           >
-            {copiedId === 'file' ? (
-              <Check className="w-3 h-3" />
+            Mirror
+          </button>
+          <button
+            onClick={() => copyToClipboard(extractId(mirrorUrl), 'mirror')}
+            className="p-1 text-gray-500 hover:text-gray-700 transition-colors"
+            title="Copy ID"
+          >
+            {copied === 'mirror' ? (
+              <span className="text-green-500 text-xs">✓</span>
             ) : (
-              <Copy className="w-3 h-3" />
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
             )}
           </button>
         </div>
       )}
     </div>
   );
-}
+};
 
 export default ProofPill;

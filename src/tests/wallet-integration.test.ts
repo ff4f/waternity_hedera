@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import {
   Client,
-  AccountBalanceQuery,
   AccountInfoQuery,
+  AccountBalanceQuery,
   TransferTransaction,
   PrivateKey,
   AccountId,
@@ -11,7 +11,6 @@ import {
 } from '@hashgraph/sdk';
 import { prisma } from '@/lib/prisma';
 import { getHederaNetworkEndpoints } from '@/lib/env';
-import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Wallet Integration Tests
@@ -26,14 +25,14 @@ describe('Wallet Integration Tests', () => {
   let client: Client;
   let operatorAccountId: AccountId;
   let operatorPrivateKey: PrivateKey;
-  let testResults: Array<{
+  const testResults: Array<{
     testName: string;
     transactionId?: string;
     accountId?: string;
     status: 'PASS' | 'FAIL';
     error?: string;
     duration: number;
-    metrics?: Record<string, any>;
+    metrics?: Record<string, Record<string, unknown>>;
   }> = [];
 
   beforeAll(async () => {
@@ -154,7 +153,6 @@ describe('Wallet Integration Tests', () => {
       // This includes account validation, balance checking, and user creation
       
       const walletAccountId = operatorAccountId.toString();
-      const walletPublicKey = operatorPrivateKey.publicKey;
       
       // Step 1: Validate account exists and is accessible
       const accountInfo = await new AccountInfoQuery()
@@ -164,7 +162,7 @@ describe('Wallet Integration Tests', () => {
       expect(accountInfo.accountId.toString()).toBe(walletAccountId);
       expect(accountInfo.key).toBeDefined();
 
-      // Step 2: Check account balance (minimum required for operations)
+      // Check account balance (minimum required for operations)
       const accountBalance = await new AccountBalanceQuery()
         .setAccountId(AccountId.fromString(walletAccountId))
         .execute(client);
@@ -195,14 +193,24 @@ describe('Wallet Integration Tests', () => {
           }
         });
       } else {
+        // Ensure USER role exists
+        const userRole = await prisma.role.upsert({
+          where: { name: 'USER' },
+          update: {},
+          create: {
+            name: 'USER'
+          }
+        });
+
         // Create new user
         user = await prisma.user.create({
           data: {
             name: userData.name,
-            username: `wallet_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            password: 'test_password_123',
+            email: `wallet_${Date.now()}_${Math.random().toString(36).substr(2, 9)}@test.com`,
+            hashedPassword: 'test_password_123',
+            salt: 'test_salt',
             walletEvm: walletAccountId,
-            role: 'USER'
+            roleId: userRole.id
           }
         });
       }
@@ -237,7 +245,7 @@ describe('Wallet Integration Tests', () => {
           accountId: walletAccountId,
           balance: accountBalance.hbars.toString(),
           userId: user.id,
-          userRole: user.role,
+          userRole: user.roleId,
           mirrorNodeConnected: mirrorResponse.ok,
           pairingApp: pairingMetadata.name
         }
@@ -447,13 +455,23 @@ describe('Wallet Integration Tests', () => {
 
         // Create user with unique name to avoid conflicts
         const uniqueName = `${userData.name} - ${Date.now()}`;
+        // Ensure USER role exists
+        const userRole = await prisma.role.upsert({
+          where: { name: 'USER' },
+          update: {},
+          create: {
+            name: 'USER'
+          }
+        });
+        
         const user = await prisma.user.create({
           data: {
             name: uniqueName,
-            username: `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            password: 'test_password_123',
+            email: `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}@test.com`,
+            hashedPassword: 'test_password_123',
+            salt: 'test_salt',
             walletEvm: userData.walletEvm,
-            role: 'USER'
+            roleId: userRole.id
           }
         });
 
@@ -489,10 +507,8 @@ describe('Wallet Integration Tests', () => {
         duration: Date.now() - startTime,
         metrics: {
           usersCreated: createdUsers.length,
-          // roleDistribution removed,
           totalUsersByAccount: usersByAccount.length,
-          sessionCount: sessionData.length,
-          // uniqueRoles removed
+          sessionCount: sessionData.length
         }
       });
 
@@ -520,13 +536,23 @@ describe('Wallet Integration Tests', () => {
       // This simulates what happens when a user disconnects their wallet
       
       // Create a test user to disconnect
+      // First ensure USER role exists
+      const userRole = await prisma.role.upsert({
+        where: { name: 'USER' },
+        update: {},
+        create: {
+           name: 'USER'
+         }
+      });
+      
       const testUser = await prisma.user.create({
         data: {
           name: 'Wallet Test User - To Disconnect',
-          username: `wallet_test_${Date.now()}`,
-          password: 'test_password_123',
+          email: `wallet_test_${Date.now()}@test.com`,
+          hashedPassword: 'test_password_123',
+          salt: 'test_salt',
           walletEvm: operatorAccountId.toString(),
-          role: 'USER'
+          roleId: userRole.id
         }
       });
 

@@ -181,3 +181,16 @@ Desktop.ini
 *.jwt
 *.token
 session*
+
+# Project-specific exclusions (waternity_hedera)
+# Hardhat build outputs and caches
+/artifacts/
+/cache/
+
+# Root-level temporary and large test payloads (avoid committing sensitive or bulky data)
+/temp_*.yaml
+/large_*.json
+/test-*.json
+/test_*.json
+/test-*.js
+/test-*.csv

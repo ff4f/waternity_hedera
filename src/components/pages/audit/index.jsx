@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import GlobalHeader from '../../components/ui/GlobalHeader';
 import Icon from '../../components/AppIcon';
 import Button from '../../components/ui/Button';
+import { EventsListSkeleton } from '../../Skeleton';
 import { api } from '../../lib/api';
 
 const hashscanTopicLink = (network, topicId) => {
@@ -301,51 +302,69 @@ const AuditPage = () => {
             <div className="rounded-xl border p-4">
               <div className="font-semibold mb-2">Events</div>
               <div className="space-y-2 max-h-64 overflow-auto">
-                {(data?.events?.events || []).map((e, i) => (
-                  <div key={i} className="p-3 border rounded-lg text-sm">
-                    <div className="font-medium">{e.type} {e.volumeLiters ? `• +${e.volumeLiters} L` : ''}</div>
-                    <div className="text-xs text-slate-500">{e.ts} • {e.wellId}</div>
-                    {e.txId && (
-                      <a href={`https://hashscan.io/${data?.network || 'testnet'}/transaction/${e.txId}`} target="_blank" rel="noreferrer" className="text-xs underline text-sky-700">Open</a>
+                {loading ? (
+                  <EventsListSkeleton count={3} />
+                ) : (
+                  <>
+                    {(data?.events?.events || []).map((e, i) => (
+                      <div key={i} className="p-3 border rounded-lg text-sm">
+                        <div className="font-medium">{e.type} {e.volumeLiters ? `• +${e.volumeLiters} L` : ''}</div>
+                        <div className="text-xs text-slate-500">{e.ts} • {e.wellId}</div>
+                        {e.txId && (
+                          <a href={`https://hashscan.io/${data?.network || 'testnet'}/transaction/${e.txId}`} target="_blank" rel="noreferrer" className="text-xs underline text-sky-700">Open</a>
+                        )}
+                      </div>
+                    ))}
+                    {(!data?.events?.events || data?.events?.events?.length === 0) && (
+                      <div className="text-sm text-slate-500">No events.</div>
                     )}
-                  </div>
-                ))}
-                {(!data?.events?.events || data?.events?.events?.length === 0) && (
-                  <div className="text-sm text-slate-500">No events.</div>
+                  </>
                 )}
               </div>
             </div>
             <div className="rounded-xl border p-4">
               <div className="font-semibold mb-2">Settlements</div>
               <div className="space-y-2 max-h-64 overflow-auto">
-                {(data?.events?.settlements || []).map((e, i) => (
-                  <div key={i} className="p-3 border rounded-lg text-sm">
-                    <div className="font-medium">{e.type}</div>
-                    <div className="text-xs text-slate-500">{e.ts} • {e.wellId}</div>
-                    {e.txId && (
-                      <a href={`https://hashscan.io/${data?.network || 'testnet'}/transaction/${e.txId}`} target="_blank" rel="noreferrer" className="text-xs underline text-sky-700">Open</a>
+                {loading ? (
+                  <EventsListSkeleton count={3} />
+                ) : (
+                  <>
+                    {(data?.events?.settlements || []).map((e, i) => (
+                      <div key={i} className="p-3 border rounded-lg text-sm">
+                        <div className="font-medium">{e.type}</div>
+                        <div className="text-xs text-slate-500">{e.ts} • {e.wellId}</div>
+                        {e.txId && (
+                          <a href={`https://hashscan.io/${data?.network || 'testnet'}/transaction/${e.txId}`} target="_blank" rel="noreferrer" className="text-xs underline text-sky-700">Open</a>
+                        )}
+                      </div>
+                    ))}
+                    {(!data?.events?.settlements || data?.events?.settlements?.length === 0) && (
+                      <div className="text-sm text-slate-500">No settlements.</div>
                     )}
-                  </div>
-                ))}
-                {(!data?.events?.settlements || data?.events?.settlements?.length === 0) && (
-                  <div className="text-sm text-slate-500">No settlements.</div>
+                  </>
                 )}
               </div>
             </div>
             <div className="rounded-xl border p-4">
               <div className="font-semibold mb-2">Anchors</div>
               <div className="space-y-2 max-h-64 overflow-auto">
-                {(data?.events?.anchors || []).map((e, i) => (
-                  <div key={i} className="p-3 border rounded-lg text-sm">
-                    <div className="font-medium">{e.type}</div>
-                    <div className="text-xs text-slate-500">{e.ts} • {e.wellId}</div>
-                    {e.txId && (
-                      <a href={`https://hashscan.io/${data?.network || 'testnet'}/transaction/${e.txId}`} target="_blank" rel="noreferrer" className="text-xs underline text-sky-700">Open</a>
+                {loading ? (
+                  <EventsListSkeleton count={3} />
+                ) : (
+                  <>
+                    {(data?.events?.anchors || []).map((e, i) => (
+                      <div key={i} className="p-3 border rounded-lg text-sm">
+                        <div className="font-medium">{e.type}</div>
+                        <div className="text-xs text-slate-500">{e.ts} • {e.wellId}</div>
+                        {e.txId && (
+                          <a href={`https://hashscan.io/${data?.network || 'testnet'}/transaction/${e.txId}`} target="_blank" rel="noreferrer" className="text-xs underline text-sky-700">Open</a>
+                        )}
+                      </div>
+                    ))}
+                    {(!data?.events?.anchors || data?.events?.anchors?.length === 0) && (
+                      <div className="text-sm text-slate-500">No anchors.</div>
                     )}
-                  </div>
-                ))}
-                {(!data?.events?.anchors || data?.events?.anchors?.length === 0) && (
-                  <div className="text-sm text-slate-500">No anchors.</div>
+                  </>
                 )}
               </div>
             </div>

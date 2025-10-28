@@ -1,257 +1,451 @@
-# 🌊 Waternity - Decentralized Water Quality & Trading Platform
+# Waternity - Decentralized Water Management Platform
 
-**Waternity** is a revolutionary decentralized platform built on **Hedera Hashgraph** that transforms water resource management through blockchain technology. Our platform enables transparent water quality monitoring, secure trading, and efficient settlement systems for underbanked regions across Africa.
+🏆 **Built for Hedera Hackathon Africa 2024**
 
-## 🏆 Hackathon Submission
+## 🌊 Overview
 
-**Track**: 💸 Onchain Finance & Real-World Assets (RWA)  
-**Sub-track**: Financial Inclusion - Bridge gaps across Africa using Hedera's fast, secure, low-cost infrastructure
-
-## 🎯 Problem & Solution
-
-**Problem**: 400+ million people in Africa lack access to clean water due to insufficient funding and poor infrastructure management.
-
-**Solution**: Waternity tokenizes water wells, enabling:
-- 💰 **Fractional Ownership** through HTS tokens
-- 🔄 **Automated Revenue Sharing** via smart contracts
-- 📊 **Transparent Operations** using HCS event logging
-- 🌍 **Global Investment** in local water infrastructure
-
-## 🚀 Key Features
-
-- **🏗️ Well Management** - Complete lifecycle management of water wells
-- **🪙 Asset Tokenization** - HTS-based ownership tokens for each well
-- **💸 Revenue Settlement** - Automated distribution to token holders
-- **📋 Compliance Tracking** - Immutable audit trail via HCS
-- **📁 Document Management** - Secure storage using HFS
-- **🔗 Wallet Integration** - HashConnect for seamless user experience
-
-## 📋 Prerequisites
-
-- **Node.js** >= 20.0.0
-- **npm** or **yarn**
-- **Hedera Testnet Account** (configured in .env)
-
-## ⚡ Quick Start
-
-### Option 1: Automated Setup (Recommended)
-```bash
-# Run the automated setup script
-npm run setup
-
-# Or quick setup without prompts
-npm run setup:quick
-```
-
-### Option 2: Manual Setup
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Setup database
-npm run db:generate
-npm run db:push
-npm run db:seed
-
-# 3. Start development server
-npm run dev
-```
-
-## 🌐 Access Points
-
-- **Frontend**: http://localhost:3000
-- **API Documentation**: http://localhost:3000/api/docs
-- **Prisma Studio**: `npm run db:studio`
-- **Hedera Explorer**: https://hashscan.io/testnet
-
-## 🔧 Environment Configuration
-
-The `.env` file is pre-configured with optimal settings:
-
-```bash
-# Hedera Testnet Configuration
-HEDERA_NETWORK=testnet
-HEDERA_ACCOUNT_ID=0.0.YOUR_ACCOUNT_ID
-HEDERA_PRIVATE_KEY=your_private_key_here
-
-# Database (SQLite for development)
-DATABASE_URL="file:./prisma/dev.db"
-
-# Authentication
-NEXTAUTH_SECRET=waternity-secret-key-2024-hedera-hackathon
-```
-
-> ✅ **Ready to run without additional configuration!**
-
-## 📁 Project Structure
-
-```
-react_app/
-├── public/             # Static assets
-├── src/
-│   ├── components/     # Reusable UI components
-│   ├── pages/          # Page components
-│   ├── styles/         # Global styles and Tailwind configuration
-│   ├── App.jsx         # Main application component
-│   ├── Routes.jsx      # Application routes
-│   └── index.jsx       # Application entry point
-├── .env                # Environment variables
-├── index.html          # HTML template
-├── package.json        # Project dependencies and scripts
-├── tailwind.config.js  # Tailwind CSS configuration
-└── vite.config.js      # Vite configuration
-```
-
-## 🧩 Adding Routes
-
-To add new routes to the application, update the `Routes.jsx` file:
-
-```jsx
-import { useRoutes } from "react-router-dom";
-import HomePage from "pages/HomePage";
-import AboutPage from "pages/AboutPage";
-
-const ProjectRoutes = () => {
-  let element = useRoutes([
-    { path: "/", element: <HomePage /> },
-    { path: "/about", element: <AboutPage /> },
-    // Add more routes as needed
-  ]);
-
-  return element;
-};
-```
-
-## 🎨 Styling
-
-This project uses Tailwind CSS for styling. The configuration includes:
-
-- Forms plugin for form styling
-- Typography plugin for text styling
-- Aspect ratio plugin for responsive elements
-- Container queries for component-specific responsive design
-- Fluid typography for responsive text
-- Animation utilities
-
-## 📱 Responsive Design
-
-The app is built with responsive design using Tailwind CSS breakpoints.
-
-
-## 🏗️ Hedera Integration
-
-### Services Used
-- **HCS (Hedera Consensus Service)**: Event logging and audit trail
-- **HTS (Hedera Token Service)**: Well ownership and revenue tokens
-- **HFS (Hedera File Service)**: Document and metadata storage
-- **Smart Contracts**: Automated settlement and escrow
-
-### Key Contracts
-```javascript
-// Well tokenization
-const wellToken = await TokenCreateTransaction()
-  .setTokenName(`Well-${wellCode}`)
-  .setTokenSymbol(wellCode)
-  .setTokenType(TokenType.FungibleCommon)
-  .execute(client);
-
-// Revenue settlement
-const settlement = await new ContractExecuteTransaction()
-  .setContractId(settlementContractId)
-  .setGas(100000)
-  .setFunction("distributeRevenue", new ContractFunctionParameters()
-    .addUint256(wellId)
-    .addUint256(amount))
-  .execute(client);
-```
-
-## 📊 Available Scripts
-
-```bash
-# Development
-npm run dev              # Start development server
-npm run build            # Build for production
-npm run start            # Start production server
-
-# Setup & Database
-npm run setup            # Automated setup with prompts
-npm run setup:quick      # Quick setup without prompts
-npm run db:generate      # Generate Prisma client
-npm run db:push          # Push schema to database
-npm run db:seed          # Seed with sample data
-npm run db:studio        # Open Prisma Studio
-npm run db:reset         # Reset database
-
-# Utilities
-npm run test             # Run tests
-npm run lint             # Lint code
-npm run hedera:check     # Check Hedera configuration
-```
-
-## 📚 Documentation
-
-- **[Setup Guide](./SETUP_GUIDE.md)** - Detailed setup instructions
-- **[Hackathon Submission](./HACKATHON_SUBMISSION.md)** - Complete project overview
-- **[API Documentation](http://localhost:3000/api/docs)** - Interactive API docs
-- **[Hedera Docs](https://docs.hedera.com/hedera)** - Official Hedera documentation
+Waternity is a comprehensive decentralized water management platform built on Hedera Hashgraph that addresses critical water challenges across Africa. Our solution combines blockchain technology, IoT integration, and financial inclusion to create a transparent, efficient, and sustainable water ecosystem.
 
 ## 🎯 Hackathon Track
 
-**Track**: Onchain Finance & Real-World Assets (RWA)  
-**Sub-track**: Asset Tokenization
+**💸 Onchain Finance & Real-World Assets (RWA)**
+- Sub-track 1: Decentralized Financial Systems
+- Sub-track 2: Asset Tokenization
+- Sub-track 3: Financial Inclusion
 
-**Why Waternity?**
-- ✅ Solves real-world problem (water access in Africa)
-- ✅ Full Hedera ecosystem integration
-- ✅ Sustainable business model
-- ✅ Measurable social impact
-- ✅ Technical innovation in RWA tokenization
+## ✨ Key Features
 
-## 🚀 Deployment
+### 🔐 THG Identity Platform Integration
+- **Digital Identity Management**: Secure credential storage and verification
+- **Water Access Rights**: Tamper-proof digital certificates for water access
+- **Conservation Achievements**: Verifiable credentials for water conservation efforts
+- **Mobile Wallet Support**: Identity wallet for credential management
 
-### Development
+### 🌐 Core Hedera Integration
+- **Hedera Consensus Service (HCS)**: Immutable transaction logging
+- **Hedera File Service (HFS)**: Decentralized document storage
+- **Real-time Data Streaming**: Water quality and usage monitoring
+- **Transparent Operations**: All transactions recorded on-chain
+
+### 💰 DeFi & Micro-Finance
+- **Lending Protocols**: Decentralized lending for water infrastructure
+- **Micro-Finance Platform**: Financial inclusion for underbanked communities
+- **Credit Scoring**: Blockchain-based credit assessment
+- **Group Lending**: Community-backed loan guarantees
+- **Liquidity Pools**: Decentralized funding mechanisms
+
+### 🏗️ Real-World Asset Tokenization
+- **Water Infrastructure Tokenization**: Fractional ownership of water assets
+- **NFT Certificates**: Unique digital certificates for water rights
+- **Dividend Distribution**: Automated revenue sharing
+- **Performance Tracking**: Real-time asset performance monitoring
+- **Metadata Storage**: Secure asset documentation on HFS
+
+### ⚙️ Smart Contract Operations
+- **Water Management Contract**: Transparent resource allocation
+- **Well Registration**: Decentralized well management
+- **Usage Tracking**: Automated water consumption monitoring
+- **Quality Assurance**: Blockchain-verified water quality data
+- **Payment Processing**: Automated billing and settlements
+
+## 🏗️ Architecture
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Frontend UI   │    │  Backend APIs   │    │ Hedera Network  │
+│                 │    │                 │    │                 │
+│ • Dashboard     │◄──►│ • Identity      │◄──►│ • HCS Topics    │
+│ • Monitoring    │    │ • Contracts     │    │ • HFS Files     │
+│ • Investor      │    │ • Tokenization  │    │ • Smart Contracts│
+│ • Operator      │    │ • DeFi          │    │ • Token Service │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                ▲
+                                │
+                       ┌─────────────────┐
+                       │   Database      │
+                       │                 │
+                       │ • PostgreSQL    │
+                       │ • Prisma ORM    │
+                       └─────────────────┘
+```
+
+## 🚀 Technology Stack
+
+- **Blockchain**: Hedera Hashgraph (HCS, HFS, Smart Contracts)
+- **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS
+- **Backend**: Node.js, Prisma ORM
+- **Database**: PostgreSQL
+- **Identity**: THG Identity Platform
+- **Smart Contracts**: Solidity
+- **SDK**: Hedera JavaScript SDK
+
+## 📦 Installation
+
+### Prerequisites
+- Node.js 18+
+- PostgreSQL
+- Hedera Testnet Account
+
+### Setup
+
+1. **Clone the repository**
+```bash
+git clone https://github.com/your-repo/waternity-hedera.git
+cd waternity-hedera
+```
+
+2. **Install dependencies**
+```bash
+npm install
+```
+
+3. **Environment Configuration**
+```bash
+cp .env.example .env.local
+```
+
+Update `.env.local` with your configuration:
+```env
+# Database
+DATABASE_URL="postgresql://username:password@localhost:5432/waternity"
+
+# Hedera Configuration
+HEDERA_NETWORK=testnet
+HEDERA_OPERATOR_ID=0.0.YOUR_ACCOUNT_ID
+HEDERA_OPERATOR_KEY=YOUR_PRIVATE_KEY
+
+# Application
+NEXTAUTH_SECRET=your-secret-key
+NEXTAUTH_URL=http://localhost:3000
+```
+
+4. **Database Setup**
+```bash
+npx prisma generate
+npx prisma db push
+```
+
+5. **Run the application**
 ```bash
 npm run dev
 ```
 
-### Production
-```bash
-npm run build
-npm run start
-```
+Visit `http://localhost:3000` to access the platform.
 
-### Environment Variables for Production
-```bash
-# Update for production
-DATABASE_URL="postgresql://user:pass@host:5432/waternity"
-HEDERA_NETWORK=mainnet
-NEXTAUTH_URL=https://your-domain.com
-```
+## 🎮 Demo Features
 
-## 🤝 Contributing
+### 1. Dashboard Overview
+- Real-time water consumption metrics
+- Financial performance indicators
+- System health monitoring
+- Recent transactions
 
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
+### 2. Water Monitoring
+- Live water quality data
+- Usage analytics
+- Well performance tracking
+- Alert management
+
+### 3. Investor Portal
+- Tokenized asset marketplace
+- Investment opportunities
+- Portfolio management
+- Dividend tracking
+
+### 4. Operator Interface
+- Well management
+- Maintenance scheduling
+- Quality control
+- System administration
+
+## 🔧 API Endpoints
+
+### Identity Management
+- `POST /api/identity/create-wallet` - Create identity wallet
+- `POST /api/identity/issue-credential` - Issue digital credential
+- `GET /api/identity/verify-credential` - Verify credential
+
+### Water Management
+- `GET /api/wells` - List all wells
+- `POST /api/wells` - Register new well
+- `GET /api/water-quality` - Get quality data
+- `POST /api/water-quality` - Submit quality reading
+
+### DeFi Operations
+- `POST /api/defi/create-pool` - Create lending pool
+- `POST /api/defi/apply-loan` - Apply for loan
+- `POST /api/defi/add-liquidity` - Add liquidity to pool
+
+### Tokenization
+- `POST /api/tokenization/tokenize-asset` - Tokenize water asset
+- `POST /api/tokenization/transfer-ownership` - Transfer fractional ownership
+- `GET /api/tokenization/portfolio` - Get investment portfolio
+
+## 🌍 Impact & Use Cases
+
+### Financial Inclusion
+- **Micro-loans** for water infrastructure development
+- **Credit scoring** based on water usage patterns
+- **Group lending** for community water projects
+- **Mobile payments** for water services
+
+### Asset Tokenization
+- **Fractional ownership** of water treatment plants
+- **Investment opportunities** in water infrastructure
+- **Liquidity provision** for water projects
+- **Transparent revenue sharing**
+
+### Operational Transparency
+- **Immutable records** of water quality
+- **Transparent pricing** and billing
+- **Audit trails** for regulatory compliance
+- **Real-time monitoring** of water systems
+
+## 🏆 Hackathon Submission
+
+### Problem Statement
+Africa faces significant water challenges:
+- 400 million people lack access to clean water
+- Limited financing for water infrastructure
+- Lack of transparency in water management
+- Inefficient resource allocation
+
+### Our Solution
+Waternity leverages Hedera's fast, secure, and low-cost infrastructure to:
+- **Democratize access** to water infrastructure investments
+- **Provide transparent** water management systems
+- **Enable financial inclusion** through DeFi protocols
+- **Create verifiable credentials** for water rights
+
+### Technical Innovation
+- **THG Identity Integration**: Seamless credential management
+- **Multi-layered Architecture**: HCS + HFS + Smart Contracts
+- **Real-time Data Processing**: IoT integration with blockchain
+- **Fractional Tokenization**: Making water infrastructure investable
+
+### Business Model
+- **Transaction fees** on water payments
+- **Platform fees** on tokenized asset trades
+- **Interest margins** on DeFi lending
+- **Subscription fees** for premium features
+
+## 🔮 Future Roadmap
+
+### Phase 1 (Current)
+- ✅ Core platform development
+- ✅ Hedera integration
+- ✅ THG Identity implementation
+- ✅ Basic DeFi features
+
+### Phase 2 (Q2 2024)
+- 🔄 Mobile application
+- 🔄 IoT device integration
+- 🔄 Advanced analytics
+- 🔄 Multi-language support
+
+### Phase 3 (Q3 2024)
+- 📋 Mainnet deployment
+- 📋 Partnership integrations
+- 📋 Regulatory compliance
+- 📋 Scale to multiple countries
+
+## 👥 Team
+
+- **Blockchain Developer**: Hedera integration & smart contracts
+- **Full-stack Developer**: Platform development
+- **Product Manager**: Strategy & roadmap
+- **UI/UX Designer**: User experience design
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) file for details.
 
-## 🏆 Hackathon Team
+## 🤝 Contributing
 
-**Ready to revolutionize water access in Africa with Hedera Hashgraph!** 🌍💧
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+
+## 📞 Contact
+
+- **Email**: team@waternity.io
+- **Twitter**: @WaternityHQ
+- **Discord**: [Join our community](https://discord.gg/waternity)
 
 ---
 
-*Built with ❤️ for Hedera Hack Africa 2024*
+**Built with ❤️ for Hedera Hackathon Africa 2024**
 
-## 🙏 Acknowledgments
+*Empowering Africa through decentralized water management*
 
-- Built with [Rocket.new](https://rocket.new)
-- Powered by React and Vite
-- Styled with Tailwind CSS
+## 🚀 Deploy ke Vercel (Free Tier)
 
-Built with ❤️ on Rocket.new
+Tanpa setup server tambahan. Cukup atur Environment Variables di Vercel Project Settings:
+
+Wajib:
+- DATABASE_URL: URL Postgres (gunakan Vercel Postgres atau Neon/Supabase). Contoh: postgresql://USER:PASSWORD@HOST:PORT/DB?sslmode=require
+- NEXTAUTH_SECRET: string acak minimal 32 karakter
+- NEXTAUTH_URL: https://<your-vercel-domain>
+- HEDERA_NETWORK: testnet
+- HEDERA_ACCOUNT_ID: 0.0.xxxxx (akun Hedera kamu)
+- HEDERA_PRIVATE_KEY: kunci privat (DER/HEX) akun tersebut
+- HEDERA_DER_PRIVATE_KEY: sama seperti HEDERA_PRIVATE_KEY jika diminta oleh validator env
+- HCS_TOPIC_ID: 0.0.6919015
+- HTS_TOKEN_ID: 0.0.6919016
+
+Opsional (untuk demo cepat):
+- HEDERA_MOCK_MODE: true
+- HEDERA_TOPUP_ENABLED: true
+
+Build & runtime akan otomatis:
+- prisma generate saat postinstall
+- inisialisasi database saat pertama kali endpoint /api/health dipanggil (auto-seed kalau tabel Role kosong)
+
+Tips:
+- Untuk Vercel Postgres, gunakan POSTGRES_PRISMA_URL sebagai DATABASE_URL
+- Untuk Neon/Supabase, pastikan parameter sslmode=require
+- Gunakan vercel env pull untuk menyamakan env lokal
+
+## 👤 Demo Accounts
+
+Untuk juri dan demo, gunakan akun berikut:
+- Operator: operator@waternity.com / password123
+- Investor 1: investor1@waternity.com / password123
+- Investor 2: investor2@waternity.com / password123
+- Agent: agent@waternity.com / password123
+
+Akun di atas otomatis dibuat oleh seeding saat pertama kali sistem dijalankan.
+
+### 2. Water Monitoring
+- Live water quality data
+- Usage analytics
+- Well performance tracking
+- Alert management
+
+### 3. Investor Portal
+- Tokenized asset marketplace
+- Investment opportunities
+- Portfolio management
+- Dividend tracking
+
+### 4. Operator Interface
+- Well management
+- Maintenance scheduling
+- Quality control
+- System administration
+
+## 🔧 API Endpoints
+
+### Identity Management
+- `POST /api/identity/create-wallet` - Create identity wallet
+- `POST /api/identity/issue-credential` - Issue digital credential
+- `GET /api/identity/verify-credential` - Verify credential
+
+### Water Management
+- `GET /api/wells` - List all wells
+- `POST /api/wells` - Register new well
+- `GET /api/water-quality` - Get quality data
+- `POST /api/water-quality` - Submit quality reading
+
+### DeFi Operations
+- `POST /api/defi/create-pool` - Create lending pool
+- `POST /api/defi/apply-loan` - Apply for loan
+- `POST /api/defi/add-liquidity` - Add liquidity to pool
+
+### Tokenization
+- `POST /api/tokenization/tokenize-asset` - Tokenize water asset
+- `POST /api/tokenization/transfer-ownership` - Transfer fractional ownership
+- `GET /api/tokenization/portfolio` - Get investment portfolio
+
+## 🌍 Impact & Use Cases
+
+### Financial Inclusion
+- **Micro-loans** for water infrastructure development
+- **Credit scoring** based on water usage patterns
+- **Group lending** for community water projects
+- **Mobile payments** for water services
+
+### Asset Tokenization
+- **Fractional ownership** of water treatment plants
+- **Investment opportunities** in water infrastructure
+- **Liquidity provision** for water projects
+- **Transparent revenue sharing**
+
+### Operational Transparency
+- **Immutable records** of water quality
+- **Transparent pricing** and billing
+- **Audit trails** for regulatory compliance
+- **Real-time monitoring** of water systems
+
+## 🏆 Hackathon Submission
+
+### Problem Statement
+Africa faces significant water challenges:
+- 400 million people lack access to clean water
+- Limited financing for water infrastructure
+- Lack of transparency in water management
+- Inefficient resource allocation
+
+### Our Solution
+Waternity leverages Hedera's fast, secure, and low-cost infrastructure to:
+- **Democratize access** to water infrastructure investments
+- **Provide transparent** water management systems
+- **Enable financial inclusion** through DeFi protocols
+- **Create verifiable credentials** for water rights
+
+### Technical Innovation
+- **THG Identity Integration**: Seamless credential management
+- **Multi-layered Architecture**: HCS + HFS + Smart Contracts
+- **Real-time Data Processing**: IoT integration with blockchain
+- **Fractional Tokenization**: Making water infrastructure investable
+
+### Business Model
+- **Transaction fees** on water payments
+- **Platform fees** on tokenized asset trades
+- **Interest margins** on DeFi lending
+- **Subscription fees** for premium features
+
+## 🔮 Future Roadmap
+
+### Phase 1 (Current)
+- ✅ Core platform development
+- ✅ Hedera integration
+- ✅ THG Identity implementation
+- ✅ Basic DeFi features
+
+### Phase 2 (Q2 2024)
+- 🔄 Mobile application
+- 🔄 IoT device integration
+- 🔄 Advanced analytics
+- 🔄 Multi-language support
+
+### Phase 3 (Q3 2024)
+- 📋 Mainnet deployment
+- 📋 Partnership integrations
+- 📋 Regulatory compliance
+- 📋 Scale to multiple countries
+
+## 👥 Team
+
+- **Blockchain Developer**: Hedera integration & smart contracts
+- **Full-stack Developer**: Platform development
+- **Product Manager**: Strategy & roadmap
+- **UI/UX Designer**: User experience design
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+
+## 📞 Contact
+
+- **Email**: team@waternity.io
+- **Twitter**: @WaternityHQ
+- **Discord**: [Join our community](https://discord.gg/waternity)
+
+---
+
+**Built with ❤️ for Hedera Hackathon Africa 2024**
+
+*Empowering Africa through decentralized water management*

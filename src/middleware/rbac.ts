@@ -16,7 +16,7 @@ export const withRole = (
       return res.status(401).json({ message: 'Unauthorized' });
     }
 
-    const userRole = (session.user as any).role;
+    const userRole = (session.user as { role?: Role }).role;
     if (!userRole || !roles.includes(userRole)) {
       return res.status(403).json({ message: 'Forbidden' });
     }

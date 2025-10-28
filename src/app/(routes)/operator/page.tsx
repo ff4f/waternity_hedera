@@ -157,18 +157,7 @@ function formatDateTime(date: Date): string {
   }).format(date)
 }
 
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'ACTIVE':
-      return 'status-active'
-    case 'MAINTENANCE':
-      return 'status-maintenance'
-    case 'INACTIVE':
-      return 'status-inactive'
-    default:
-      return 'status-inactive'
-  }
-}
+import { getStatusColor } from '@/lib/ui'
 
 function getPriorityColor(priority: string): string {
   switch (priority) {

@@ -13,6 +13,12 @@ const envSchema = z.object({
   // Hedera Services
   MIRROR_NODE_URL: z.string().url('Invalid Mirror Node URL').default('https://testnet.mirrornode.hedera.com/api/v1'),
   HASHSCAN_BASE: z.string().url('Invalid HashScan Base URL').default('https://hashscan.io/testnet'),
+  HEDERA_MOCK_MODE: z.string()
+    .default('false')
+    .transform((val) => {
+      const normalized = val.toLowerCase().trim();
+      return normalized === 'true' || normalized === '1' || normalized === 'yes';
+    }),
   
   // Next.js
   NEXTAUTH_SECRET: z.string().min(32, 'NEXTAUTH_SECRET must be at least 32 characters').optional(),
@@ -27,6 +33,19 @@ type Env = z.infer<typeof envSchema>;
 
 // Validate environment variables
 function validateEnv(): Env {
+  // Only validate on server side
+  if (typeof window !== 'undefined') {
+    // Return a minimal client-side env object
+    return {
+      HEDERA_NETWORK: 'testnet',
+      HEDERA_MOCK_MODE: false,
+      APP_ENV: 'development',
+      NODE_ENV: 'development',
+      MIRROR_NODE_URL: 'https://testnet.mirrornode.hedera.com/api/v1',
+      HASHSCAN_BASE: 'https://hashscan.io/testnet',
+    } as Env;
+  }
+
   try {
     return envSchema.parse(process.env);
   } catch (error) {
@@ -86,3 +105,32 @@ export const getDatabaseConfig = () => {
 
 // Export types
 export type { Env };
+
+export function requireEnv() {
+  const required = [
+    'DATABASE_URL',
+    'HEDERA_ACCOUNT_ID',
+    'HEDERA_PRIVATE_KEY',
+    'HEDERA_DER_PRIVATE_KEY',
+    'HEDERA_NETWORK',
+    'MIRROR_NODE_URL',
+    'HASHSCAN_BASE',
+    'APP_ENV',
+    'NODE_ENV',
+  ];
+
+  const missing = required.filter((k) => !process.env[k]);
+  if (missing.length) {
+    throw new Error(`Missing env vars: ${missing.join(', ')}`);
+  }
+}
+
+export function optionalDemoEnv() {
+  // Not required for core runtime, but used to make demo seamless
+  const optional = ['HCS_TOPIC_ID', 'HTS_TOKEN_ID', 'NEXTAUTH_SECRET', 'NEXTAUTH_URL'];
+  optional.forEach((k) => {
+    if (!process.env[k]) {
+      console.warn(`[demo] Optional env ${k} is not set`);
+    }
+  });
+}

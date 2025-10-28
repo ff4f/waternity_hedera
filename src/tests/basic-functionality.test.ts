@@ -8,20 +8,30 @@ describe('Basic Functionality Tests', () => {
   });
 
   it('should create and read user', async () => {
+    // Ensure USER role exists
+    const userRole = await prisma.role.upsert({
+      where: { name: 'USER' },
+      update: {},
+      create: {
+        name: 'USER'
+      }
+    });
+
     const testUser = await prisma.user.create({
       data: {
         name: 'Test User Basic',
-        username: `test_basic_${Date.now()}`,
-        password: 'test_password_123',
+        email: `test_basic_${Date.now()}@test.com`,
+        hashedPassword: 'test_password_123',
+        salt: 'test_salt',
         accountId: '0.0.123456',
         walletEvm: '0.0.123456',
-        role: 'USER'
+        roleId: userRole.id
       }
     });
 
     expect(testUser.id).toBeDefined();
     expect(testUser.name).toBe('Test User Basic');
-    expect(testUser.role).toBe('USER');
+    expect(testUser.roleId).toBe(userRole.id);
 
     // Clean up
     await prisma.user.delete({ where: { id: testUser.id } });

@@ -34,14 +34,24 @@ describe('Settlement Execute Idempotency Tests', () => {
   let testInvestors: any[] = [];
 
   beforeAll(async () => {
+    // Ensure USER role exists
+    const userRole = await prisma.role.upsert({
+      where: { name: 'USER' },
+      update: {},
+      create: {
+        name: 'USER'
+      }
+    });
+
     // Create test user
     testUser = await prisma.user.create({
       data: {
         name: 'Test User - Idempotency',
-        username: `idempotency_user_${Date.now()}`,
-        password: 'test_password_123',
+        email: `idempotency_user_${Date.now()}@test.com`,
+        hashedPassword: 'test_password_123',
+        salt: 'test_salt',
         walletEvm: '0.0.123456',
-        role: 'USER'
+        roleId: userRole.id
       }
     });
 
@@ -67,10 +77,11 @@ describe('Settlement Execute Idempotency Tests', () => {
       const investorUser = await prisma.user.create({
         data: {
           name: investor.name,
-          username: `investor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          password: 'test_password_123',
+          email: `investor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}@test.com`,
+          hashedPassword: 'test_password_123',
+          salt: 'test_salt',
           accountId: `0.0.${123456 + Math.floor(Math.random() * 1000)}`, // Unique account IDs
-          role: 'USER'
+          roleId: userRole.id
         }
       });
 

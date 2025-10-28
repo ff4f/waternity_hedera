@@ -1,86 +1,113 @@
-/**
- * URL helper functions for Hedera-related links
- */
+import { env } from "@/lib/env";
 
 /**
- * Get the appropriate network prefix for URLs based on environment
- */
-function getNetworkPrefix(): string {
-  const network = process.env.HEDERA_NETWORK || 'testnet';
-  return network === 'mainnet' ? '' : `${network}.`;
-}
-
-/**
- * Generate HashScan topic URL
- * @param topicId - The Hedera topic ID (e.g., "0.0.123456")
+ * Generate HashScan URL for a topic
+ * @param topicId - Hedera topic ID (e.g., "0.0.12345")
  * @returns HashScan topic URL
  */
 export function hashscanTopicUrl(topicId: string): string {
-  const networkPrefix = getNetworkPrefix();
-  return `https://${networkPrefix}hashscan.io/topic/${topicId}`;
+  return `${env.HASHSCAN_BASE}/topic/${topicId}`;
 }
 
 /**
- * Generate HashScan message URL
- * @param topicId - The Hedera topic ID (e.g., "0.0.123456")
- * @param sequence - The message sequence number
+ * Generate HashScan URL for a specific topic message
+ * @param topicId - Hedera topic ID (e.g., "0.0.12345")
+ * @param sequenceNumber - Message sequence number
  * @returns HashScan message URL
  */
-export function hashscanMessageUrl(topicId: string, sequence: number | string): string {
-  const networkPrefix = getNetworkPrefix();
-  return `https://${networkPrefix}hashscan.io/topic/${topicId}/message/${sequence}`;
+export function hashscanMessageUrl(topicId: string, sequenceNumber: number): string {
+  return `${env.HASHSCAN_BASE}/topic/${topicId}/message/${sequenceNumber}`;
 }
 
 /**
- * Generate Mirror Node topic URL
- * @param topicId - The Hedera topic ID (e.g., "0.0.123456")
- * @returns Mirror Node REST API topic URL
+ * Generate HashScan URL for a transaction
+ * @param transactionId - Hedera transaction ID
+ * @returns HashScan transaction URL
  */
-export function mirrorTopicUrl(topicId: string): string {
-  const network = process.env.HEDERA_NETWORK || 'testnet';
+export function hashscanTransactionUrl(transactionId: string): string {
+  return `${env.HASHSCAN_BASE}/transaction/${transactionId}`;
+}
+
+/**
+ * Generate Mirror Node API URL for topic messages
+ * @param topicId - Hedera topic ID (e.g., "0.0.12345")
+ * @param limit - Optional limit for number of messages
+ * @param order - Optional order (asc/desc)
+ * @returns Mirror Node topic messages URL
+ */
+export function mirrorTopicUrl(
+  topicId: string, 
+  limit?: number, 
+  order: 'asc' | 'desc' = 'desc'
+): string {
+  const baseUrl = `${env.MIRROR_NODE_URL}/topics/${topicId}/messages`;
+  const params = new URLSearchParams();
   
-  let baseUrl: string;
-  switch (network) {
-    case 'mainnet':
-      baseUrl = 'https://mainnet-public.mirrornode.hedera.com';
-      break;
-    case 'testnet':
-      baseUrl = 'https://testnet.mirrornode.hedera.com';
-      break;
-    case 'previewnet':
-      baseUrl = 'https://previewnet.mirrornode.hedera.com';
-      break;
-    default:
-      baseUrl = 'https://testnet.mirrornode.hedera.com';
+  if (limit) {
+    params.append('limit', limit.toString());
   }
   
-  return `${baseUrl}/api/v1/topics/${topicId}/messages`;
+  params.append('order', order);
+  
+  return `${baseUrl}?${params.toString()}`;
 }
 
 /**
- * Generate Mirror Node message URL
- * @param topicId - The Hedera topic ID (e.g., "0.0.123456")
- * @param sequence - The message sequence number
- * @returns Mirror Node REST API message URL
+ * Generate Mirror Node API URL for a specific topic message
+ * @param topicId - Hedera topic ID (e.g., "0.0.12345")
+ * @param sequenceNumber - Message sequence number
+ * @returns Mirror Node specific message URL
  */
-export function mirrorMessageUrl(topicId: string, sequence: number | string): string {
-  const baseUrl = mirrorTopicUrl(topicId);
-  return `${baseUrl}/${sequence}`;
+export function mirrorTopicMessageUrl(topicId: string, sequenceNumber: number): string {
+  return `${env.MIRROR_NODE_URL}/topics/${topicId}/messages/${sequenceNumber}`;
 }
 
 /**
- * Generate all relevant links for an HCS event
- * @param topicId - The Hedera topic ID
- * @param sequenceNumber - The message sequence number
- * @returns Object containing all relevant links
+ * Generate Mirror Node API URL for transaction details
+ * @param transactionId - Hedera transaction ID
+ * @returns Mirror Node transaction URL
  */
-export function generateEventLinks(topicId: string, sequenceNumber: number | string) {
-  return {
-    hashscan: hashscanMessageUrl(topicId, sequenceNumber),
-    mirror: mirrorMessageUrl(topicId, sequenceNumber),
+export function mirrorTransactionUrl(transactionId: string): string {
+  return `${env.MIRROR_NODE_URL}/transactions/${transactionId}`;
+}
+
+/**
+ * Generate all relevant links for an HCS message
+ * @param topicId - Hedera topic ID
+ * @param sequenceNumber - Message sequence number (optional)
+ * @param transactionId - Transaction ID (optional)
+ * @returns Object with all relevant URLs
+ */
+export interface HcsLinks {
+  topic: { hashscan: string; mirror: string };
+  message?: { hashscan: string; mirror: string };
+  transaction?: { hashscan: string; mirror: string };
+}
+export function generateHcsLinks(
+  topicId: string,
+  sequenceNumber?: number,
+  transactionId?: string
+) {
+  const links: HcsLinks = {
     topic: {
       hashscan: hashscanTopicUrl(topicId),
       mirror: mirrorTopicUrl(topicId)
     }
   };
+
+  if (sequenceNumber !== undefined) {
+    links.message = {
+      hashscan: hashscanMessageUrl(topicId, sequenceNumber),
+      mirror: mirrorTopicMessageUrl(topicId, sequenceNumber)
+    };
+  }
+
+  if (transactionId) {
+    links.transaction = {
+      hashscan: hashscanTransactionUrl(transactionId),
+      mirror: mirrorTransactionUrl(transactionId)
+    };
+  }
+
+  return links;
 }

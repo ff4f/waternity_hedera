@@ -12,36 +12,63 @@ describe('RBAC Tests', () => {
   let agentCookie: string;
 
   beforeAll(async () => {
+    // Clean up existing data
+    await prisma.user.deleteMany();
+    await prisma.role.deleteMany();
+    
+    // Create test roles
+    const investorRole = await prisma.role.upsert({
+      where: { name: 'INVESTOR' },
+      update: {},
+      create: { name: 'INVESTOR' }
+    });
+    
+    const operatorRole = await prisma.role.upsert({
+      where: { name: 'OPERATOR' },
+      update: {},
+      create: { name: 'OPERATOR' }
+    });
+    
+    const agentRole = await prisma.role.upsert({
+      where: { name: 'AGENT' },
+      update: {},
+      create: { name: 'AGENT' }
+    });
+    
     // Create test users
-    const hashedPassword = await bcrypt.hash('testpassword123', 10);
+    const salt = await bcrypt.genSalt(12);
+    const hashedPassword = await bcrypt.hash('testpassword123', salt);
     
     testInvestor = await prisma.user.create({
       data: {
         name: 'Test Investor',
-        username: 'testinvestor',
-        password: hashedPassword,
-        role: Role.INVESTOR,
-        accountId: '0.0.1001'
+        email: 'testinvestor@test.com',
+        hashedPassword,
+        salt,
+        roleId: investorRole.id,
+        hederaAccountId: '0.0.1001'
       }
     });
 
     testOperator = await prisma.user.create({
       data: {
         name: 'Test Operator',
-        username: 'testoperator',
-        password: hashedPassword,
-        role: Role.OPERATOR,
-        accountId: '0.0.1002'
+        email: 'testoperator@test.com',
+        hashedPassword,
+        salt,
+        roleId: operatorRole.id,
+        hederaAccountId: '0.0.1002'
       }
     });
 
     testAgent = await prisma.user.create({
       data: {
         name: 'Test Agent',
-        username: 'testagent',
-        password: hashedPassword,
-        role: Role.AGENT,
-        accountId: '0.0.1003'
+        email: 'testagent@test.com',
+        hashedPassword,
+        salt,
+        roleId: agentRole.id,
+        hederaAccountId: '0.0.1003'
       }
     });
 

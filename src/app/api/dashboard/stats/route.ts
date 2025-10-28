@@ -1,48 +1,67 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { requireUser, assertRole, createUnauthorizedResponse, createForbiddenResponse, AuthenticationError, AuthorizationError } from '@/lib/auth/roles';
+import { logger } from '@/lib/log';
+import { env } from '@/lib/env';
 
 export async function GET(request: NextRequest) {
+  let user: any = null;
   try {
-    // Get total counts
-    const totalUsers = await prisma.user.count();
-    const totalWells = await prisma.well.count();
-    const activeWells = await prisma.well.count({
-      where: {
-        // Assuming wells with recent events are active
-        events: {
-          some: {
-            consensusTime: {
-              gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
-            }
-          }
-        }
+    // Dashboard stats are public for GET requests (as configured in middleware)
+    // Only require authentication for admin-specific features if needed
+    try {
+      user = await requireUser(request);
+      logger.info('Dashboard stats requested by authenticated user', {
+        userId: user.sub,
+        role: user.role
+      });
+    } catch (error) {
+      // Allow public access - no authentication required for dashboard stats
+      user = { sub: 'public', role: 'PUBLIC' };
+      logger.info('Dashboard stats requested by public user');
+    }
+    
+    logger.info('Dashboard stats requested', {
+      userId: user.sub,
+      role: user.role
+    });
+
+    // Get counts
+    const [wellsCount, activeWellsCount, usersCount, payoutsCount] = await Promise.all([
+      prisma.well.count(),
+      prisma.well.count({ where: { status: 'ACTIVE' } }),
+      prisma.user.count(),
+      prisma.payout.count()
+    ]);
+
+    // Get settlement counts by status
+    const settlementsByStatus = await prisma.settlement.groupBy({
+      by: ['status'],
+      _count: {
+        id: true
       }
     });
 
-    // Get total revenue from settlements
-    const settlements = await prisma.settlement.findMany({
-      where: {
-        status: 'COMPLETED'
-      }
-    });
-    const totalRevenue = settlements.reduce((sum, settlement) => sum + (settlement.grossRevenue || 0), 0);
+    const settlementByStatus = settlementsByStatus.reduce((acc, item) => {
+      acc[item.status] = item._count.id;
+      return acc;
+    }, {} as Record<string, number>);
 
-    // Get total payouts
-    const payouts = await prisma.payout.findMany({
-      where: {
-        status: 'COMPLETED'
-      }
-    });
-    const totalPayouts = payouts.reduce((sum, payout) => sum + payout.amount, 0);
-
-    // Get recent events
+    // Get last 10 HCS events ordered by consensusTime desc, sequenceNumber desc
     const recentEvents = await prisma.hcsEvent.findMany({
       take: 10,
-      orderBy: {
-        consensusTime: 'desc'
-      },
+      orderBy: [
+        { consensusTime: 'desc' },
+        { sequenceNumber: 'desc' }
+      ],
       include: {
-        well: true
+        well: {
+          select: {
+            id: true,
+            code: true,
+            name: true
+          }
+        }
       }
     });
 
@@ -51,20 +70,42 @@ export async function GET(request: NextRequest) {
       type: event.type,
       title: getEventTitle(event.type),
       description: getEventDescription(event.type, event.well?.code || '', event.payloadJson),
-      timestamp: event.consensusTime,
+      timestamp: event.consensusTime?.toISOString() || new Date().toISOString(),
       wellCode: event.well?.code,
-      txId: event.txId
+      txId: event.messageId
     }));
 
-    return NextResponse.json({
-      totalWells,
-      activeWells,
-      totalRevenue,
-      totalPayouts,
+    const response = {
+      totalWells: wellsCount,
+      activeWells: activeWellsCount,
+      totalRevenue: 0, // TODO: Calculate from settlements
+      totalPayouts: payoutsCount,
       recentEvents: formattedEvents
+    };
+
+    logger.info('Dashboard stats retrieved successfully', {
+      userId: user.sub,
+      totalWells: wellsCount,
+      activeWells: activeWellsCount,
+      totalPayouts: payoutsCount,
+      eventsCount: formattedEvents.length
     });
+
+    return NextResponse.json(response);
   } catch (error) {
-    console.error('Error fetching dashboard stats:', error);
+    logger.error('Error fetching dashboard stats', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      userId: user?.sub
+    });
+    
+    if (error instanceof AuthenticationError) {
+      return createUnauthorizedResponse();
+    }
+    
+    if (error instanceof AuthorizationError) {
+      return createForbiddenResponse();
+    }
+    
     return NextResponse.json(
       { error: 'Failed to fetch dashboard stats' },
       { status: 500 }

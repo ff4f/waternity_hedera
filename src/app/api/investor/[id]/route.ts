@@ -1,15 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import { requireInvestor } from '@/lib/auth/roles';
-import { Role } from '@/lib/types';
+import { requireUser, assertRole, createUnauthorizedResponse, createForbiddenResponse, AuthenticationError, AuthorizationError } from '@/lib/auth/roles';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  console.log('[INVESTOR] GET /api/investor/[id] - Fetching investor data');
+  
   try {
-    // Require INVESTOR role for investor data access
-    const user = await requireInvestor(request);
+    // Require authentication and check for appropriate role
+    const user = await requireUser(request);
+    
+    // Check if user has INVESTOR role or is admin, or is the investor themselves
+    if (user.role?.name !== 'INVESTOR' && user.role?.name !== 'ADMIN' && user.id !== params.id) {
+      console.log('[INVESTOR] Access denied for user:', user.id, 'requesting investor:', params.id);
+      throw new AuthorizationError('Insufficient permissions');
+    }
     
     const investorId = params.id;
 
@@ -18,7 +25,11 @@ export async function GET(
       where: { 
         id: investorId
       },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        hederaAccountId: true,
+        createdAt: true,
         memberships: {
           include: {
             well: {
@@ -53,10 +64,8 @@ export async function GET(
     });
 
     if (!investor) {
-      return NextResponse.json(
-        { error: 'Investor not found' },
-        { status: 404 }
-      );
+      console.log('[INVESTOR] Investor not found:', investorId);
+      return NextResponse.json({ error: 'Investor not found' }, { status: 404 });
     }
 
     // Calculate portfolio statistics based on shareBps
@@ -200,7 +209,7 @@ export async function GET(
     const investorData = {
       id: investor.id,
       name: investor.name,
-      accountId: investor.accountId,
+      hederaAccountId: investor.hederaAccountId,
       createdAt: investor.createdAt,
       portfolio: {
         totalShareBps,
@@ -215,13 +224,19 @@ export async function GET(
       monthlyEarnings: getMonthlyEarnings(validPayouts)
     };
 
+    console.log('[INVESTOR] Investor data fetched successfully:', investorId);
     return NextResponse.json(investorData);
   } catch (error) {
-    console.error('Error fetching investor data:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch investor data' },
-      { status: 500 }
-    );
+    if (error instanceof AuthenticationError) {
+      return createUnauthorizedResponse();
+    }
+    
+    if (error instanceof AuthorizationError) {
+      return createForbiddenResponse();
+    }
+    
+    console.error('[INVESTOR] Error fetching investor data:', error);
+    return NextResponse.json({ error: 'Failed to fetch investor data' }, { status: 500 });
   }
 }
 

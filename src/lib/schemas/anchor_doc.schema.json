@@ -89,7 +89,7 @@
   "required": [
     "messageId",
     "wellId",
-    "type",
+    "documentType",
     "digestAlgo",
     "digestHex"
   ],

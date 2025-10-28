@@ -152,13 +152,23 @@ describe('API Integration Tests', () => {
     });
 
     // Create test user and well for API tests
+    // Ensure USER role exists
+    const userRole = await prisma.role.upsert({
+      where: { name: 'USER' },
+      update: {},
+      create: {
+        name: 'USER'
+      }
+    });
+
     testUser = await prisma.user.create({
       data: {
         name: 'API Test User',
-        username: `api_test_${Date.now()}`,
-        password: 'test_password_123',
+        email: `api_test_${Date.now()}@test.com`,
+        hashedPassword: 'test_password_123',
+        salt: 'test_salt',
         walletEvm: operatorAccountId.toString(),
-        role: 'USER'
+        roleId: userRole.id
       }
     });
 

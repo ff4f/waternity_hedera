@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://waternity.com/schemas/common.hcs.schema.json",
+  "title": "Common HCS Event Schema",
+  "description": "Base schema for all Hedera Consensus Service events",
+  "type": "object",
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the event"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the event occurred"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Schema version in semver format",
+      "default": "1.0.0"
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "nodeId": {
+          "type": "string",
+          "description": "Identifier of the node that generated the event"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Identifier of the user who triggered the event"
+        },
+        "deviceId": {
+          "type": "string",
+          "description": "Identifier of the device involved in the event"
+        }
+      },
+      "required": ["nodeId"],
+      "additionalProperties": false
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "correlationId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Correlation ID for tracking related events"
+        },
+        "parentEventId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "ID of the parent event if this is a child event"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tags for categorizing the event"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": ["eventId", "timestamp", "version", "source"],
+  "additionalProperties": false
+}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import ProofPillComponent from '../../../components/ui/ProofPillComponent';
+import SettlementStatusIndicator from '../../../SettlementStatusIndicator';
 import { sendTransaction } from '../../../lib/wallet/connect';
 import { Transaction, AccountId } from '@hashgraph/sdk';
 
@@ -182,9 +183,7 @@ const SettlementCalculator = () => {
       <div className="mb-6 p-4 bg-muted/30 rounded-lg">
         <div className="flex items-center justify-between mb-4">
           <h4 className="font-semibold text-foreground">Revenue Summary</h4>
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(selectedSettlement?.status)}`}>
-            {selectedSettlement?.status}
-          </span>
+          <SettlementStatusIndicator status={selectedSettlement?.status?.toUpperCase()} />
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">

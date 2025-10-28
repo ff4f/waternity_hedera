@@ -1,58 +1,83 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionFromCookie } from '../../../../lib/auth/session';
+import { getUserFromRequest } from '../../../../lib/auth/session';
+import { requireUser } from '../../../../lib/auth/roles';
+import { methodNotAllowed } from '@/lib/http/errors';
+import { getHbarBalance } from '@/lib/hedera/client';
 
-export async function GET(request: NextRequest) {
+export const runtime = 'nodejs';
+
+interface MeResponse {
+  success: boolean;
+  user: {
+    id: string;
+    email: string;
+    name: string | null;
+    role: {
+      id: string;
+      name: string;
+    };
+    hederaAccountId: string | null;
+    hbarBalance?: string | null;
+    createdAt: Date;
+  };
+}
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    // Get user session from cookie
-    const user = await getSessionFromCookie();
-
+    console.log('[AUTH] GET /api/auth/me - User info request');
+    
+    // Get authenticated user from request
+    const user = await getUserFromRequest(request);
+    
+    // Check if user is authenticated
     if (!user) {
-      return NextResponse.json(
-        { error: 'unauthorized', message: 'Not authenticated' },
-        { status: 401 }
-      );
+      console.log('[AUTH] User info request failed - not authenticated');
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    // Return user profile (excluding sensitive data)
+    // Optionally fetch HBAR balance if hederaAccountId exists
+    let hbarBalance: string | null = null;
+    try {
+      if (user.hederaAccountId) {
+        const bal = await getHbarBalance(user.hederaAccountId);
+        hbarBalance = bal.toString();
+      }
+    } catch (e) {
+      console.warn('[AUTH] Failed to fetch HBAR balance in /me:', e);
+    }
+
+    console.log('[AUTH] User info request successful for user:', user.id);
     return NextResponse.json({
-      success: true,
       user: {
-        id: user.sub,
+        id: user.id,
+        email: user.email,
         name: user.name,
-        role: user.role,
-        issuedAt: user.iat,
-        expiresAt: user.exp,
+        role: {
+          id: user.role.id,
+          name: user.role.name,
+        },
+        hederaAccountId: user.hederaAccountId,
+        hbarBalance,
+        createdAt: user.createdAt,
       },
     });
-
   } catch (error) {
-    console.error('Get user profile error:', error);
-    
-    return NextResponse.json(
-      { error: 'internal_error', message: 'An internal error occurred' },
-      { status: 500 }
-    );
+    console.error('[AUTH] Error fetching user data:', error);
+    return NextResponse.json({ error: 'An unexpected error occurred while fetching user data' }, { status: 500 });
   }
 }
 
-// Handle unsupported methods
-export async function POST() {
-  return NextResponse.json(
-    { error: 'method_not_allowed', message: 'Method not allowed' },
-    { status: 405 }
-  );
+export async function POST(): Promise<NextResponse> {
+  console.log('[AUTH] POST /api/auth/me - Method not allowed');
+  return methodNotAllowed('POST method not supported for user info endpoint');
 }
 
-export async function PUT() {
-  return NextResponse.json(
-    { error: 'method_not_allowed', message: 'Method not allowed' },
-    { status: 405 }
-  );
+export async function PUT(): Promise<NextResponse> {
+  console.log('[AUTH] PUT /api/auth/me - Method not allowed');
+  return methodNotAllowed('PUT method not supported for user info endpoint');
 }
 
-export async function DELETE() {
-  return NextResponse.json(
-    { error: 'method_not_allowed', message: 'Method not allowed' },
-    { status: 405 }
-  );
+export async function DELETE(): Promise<NextResponse> {
+  console.log('[AUTH] DELETE /api/auth/me - Method not allowed');
+  return methodNotAllowed('DELETE method not supported for user info endpoint');
 }

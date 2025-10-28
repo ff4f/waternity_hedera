@@ -2,16 +2,17 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createMocks } from 'node-mocks-http';
 import { prisma } from '@/lib/prisma';
 import { POST as requestHandler } from '@/app/api/settlements/request/route';
-import approveHandler from '@/pages/api/settlements/[id]/approve';
-import executeHandler from '@/pages/api/settlements/[id]/execute';
+import { POST as approveHandler } from '@/app/api/settlements/approve/route';
+import { POST as executeHandler } from '@/app/api/settlements/execute/route';
+import type { User, Well } from '@prisma/client';
 
 import { getSession } from 'next-auth/react';
 
 vi.mock('next-auth/react');
 
 describe('Settlement E2E', () => {
-  let user: any;
-  let well: any;
+  let user: User;
+  let well: Well;
 
   beforeEach(async () => {
     await prisma.payout.deleteMany();
@@ -23,14 +24,25 @@ describe('Settlement E2E', () => {
     await prisma.hcsEvent.deleteMany();
     await prisma.well.deleteMany();
     await prisma.user.deleteMany();
+    await prisma.role.deleteMany();
+
+    // Ensure USER role exists
+    const userRole = await prisma.role.upsert({
+      where: { name: 'USER' },
+      update: {},
+      create: {
+        name: 'USER'
+      }
+    });
 
     user = await prisma.user.create({
       data: {
         name: 'Test User',
-        username: `settlement_test_${Date.now()}`,
-        password: 'test_password_123',
+        email: `settlement_test_${Date.now()}@test.com`,
+        hashedPassword: 'test_password_123',
+        salt: 'test_salt',
         walletEvm: '0.0.123456',
-        role: 'USER',
+        roleId: userRole.id,
       },
     });
 
@@ -45,7 +57,7 @@ describe('Settlement E2E', () => {
     });
 
     // Mock getSession
-    (getSession as any).mockResolvedValue({
+    vi.mocked(getSession).mockResolvedValue({
       user: {
         role: 'OPERATOR',
       },
@@ -54,7 +66,7 @@ describe('Settlement E2E', () => {
 
   it('should handle the happy path', async () => {
     // 1. Request settlement
-    const { req: reqRequest, res: resRequest } = createMocks({
+    const { req: reqRequest } = createMocks({
       method: 'POST',
       body: {
         wellId: well.id,
@@ -79,7 +91,7 @@ describe('Settlement E2E', () => {
       },
     });
 
-    await approveHandler(reqApprove, resApprove);
+    await approveHandler(reqApprove);
     const approvedSettlement = JSON.parse(resApprove._getData());
 
     expect(resApprove._getStatusCode()).toBe(200);
@@ -93,7 +105,7 @@ describe('Settlement E2E', () => {
       },
     });
 
-    await executeHandler(reqExecute, resExecute);
+    await executeHandler(reqExecute);
     const executedSettlement = JSON.parse(resExecute._getData());
 
     expect(resExecute._getStatusCode()).toBe(200);

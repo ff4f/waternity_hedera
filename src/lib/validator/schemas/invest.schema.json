@@ -29,8 +29,24 @@
   },
   "required": ["messageId", "amount"],
   "anyOf": [
-    {"required": ["projectId"]},
-    {"required": ["wellId"]}
+    {
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["projectId"]
+    },
+    {
+      "properties": {
+        "wellId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["wellId"]
+    }
   ],
   "additionalProperties": false
 }

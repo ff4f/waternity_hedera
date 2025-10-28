@@ -1,0 +1,16 @@
+{
+  "name": "Waternity",
+  "short_name": "Waternity",
+  "description": "Decentralized water well investment platform on Hedera",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0066cc",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ]
+}

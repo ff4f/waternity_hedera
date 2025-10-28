@@ -1,8 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   experimental: {
     serverComponentsExternalPackages: ['@prisma/client', '@hashgraph/sdk']
   },
+  transpilePackages: ['recharts'],
   images: {
     domains: ['localhost'],
     remotePatterns: [

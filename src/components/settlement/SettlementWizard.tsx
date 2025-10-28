@@ -1,5 +1,6 @@
 import React from 'react';
 import { hashscanTopicUrl, hashscanMessageUrl } from '@/lib/hedera/links';
+import WalletConnectNotice from '@/components/WalletConnectNotice';
 
 // Define the steps in the settlement wizard
 type Step = 'request' | 'approve' | 'execute' | 'mint';
@@ -31,6 +32,19 @@ const SettlementWizard: React.FC<SettlementWizardProps> = ({ wellId }) => {
   const [error, setError] = React.useState<string | null>(null);
   const [settlementData, setSettlementData] = React.useState<SettlementData>({});
   const [notification, setNotification] = React.useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [isWalletConnected, setIsWalletConnected] = React.useState(false);
+
+  // Check wallet connection status
+  React.useEffect(() => {
+    // Mock wallet connection check - replace with actual wallet service
+    const checkWalletConnection = () => {
+      // This should be replaced with actual wallet connection check
+      const connected = localStorage.getItem('hedera-wallet-connected') === 'true';
+      setIsWalletConnected(connected);
+    };
+    
+    checkWalletConnection();
+  }, []);
 
   // Show notification for 5 seconds
   React.useEffect(() => {
@@ -248,6 +262,20 @@ const SettlementWizard: React.FC<SettlementWizardProps> = ({ wellId }) => {
       setLoading(false);
     }
   };
+
+  // Show wallet connect notice if wallet is not connected
+  if (!isWalletConnected) {
+    return (
+      <div className="mb-4">
+        <h3 className="text-xl font-bold mb-2">Settlement Wizard</h3>
+        <WalletConnectNotice 
+           show={true}
+           message="Connect your Hedera wallet to proceed with settlement operations"
+           className="mb-4"
+         />
+      </div>
+    );
+  }
 
   return (
     <div className="mb-4">

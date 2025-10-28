@@ -1,11 +1,113 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
 'use client'
 
-import React, { useState } from 'react'
-import { Metadata } from 'next'
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
 import InvestorsModal from '@/components/modals/InvestorsModal'
 import UploadDocumentModal from '@/components/modals/UploadDocumentModal'
+import Skeleton, { WellKPISkeleton, EventsListSkeleton } from '@/components/Skeleton'
+import { getStatusColor } from '@/lib/ui'
+
+// Well detail types
+interface WellTimelineEvent {
+  id?: string
+  type?: string
+  title?: string
+  description?: string
+  timestamp?: Date | string
+  createdAt?: Date | string
+  txId?: string
+  status?: string
+}
+
+interface WellDocument {
+  id?: string
+  name?: string
+  type?: string
+  size?: string
+  uploadedAt?: Date
+  uploadedBy?: string
+}
+
+interface Investor {
+  id: string
+  name: string
+  investment: number
+  percentage: number
+  joinedAt: Date
+}
+
+interface WellLocation {
+  address?: string
+  region?: string
+  country?: string
+  coordinates?: { lat: number; lng: number } | null
+  display?: string
+}
+
+interface WellTechnical {
+  capacity: number
+  depth: number
+  pumpType: string
+  installationDate: Date
+  lastMaintenance: Date
+  nextMaintenance: Date
+}
+
+interface WellFinancial {
+  totalInvestment: number
+  investorCount: number
+  monthlyRevenue: number
+  totalRevenue: number
+  roi: number
+}
+
+interface WellProduction {
+  currentMonth: number
+  lastMonth: number
+  yearToDate: number
+  allTime: number
+  efficiency: number
+}
+
+interface WellUI {
+  id: string
+  code: string
+  name: string
+  description: string
+  location: WellLocation
+  status: string
+  operator: { id: string; name: string }
+  hedera: { topicId: string; tokenId: string; accountId: string }
+  technical: WellTechnical
+  financial: WellFinancial
+  production: WellProduction
+  investors: Investor[]
+  timeline: WellTimelineEvent[]
+  documents: WellDocument[]
+}
+
+// API shapes to adapt from
+interface ApiEvent { id?: string; type?: string; payloadJson?: string; consensusTime?: string; createdAt?: string; txId?: string }
+interface ApiSettlement { status?: string; createdAt?: string; kwhTotal?: number; grossRevenue?: number; periodStart?: string }
+interface ApiMembership { id?: string; shareBps?: number; createdAt?: string; user?: { id?: string; name?: string } }
+interface ApiDocument { id?: string; name?: string; type?: string; createdAt?: string }
+interface ApiWell {
+  id?: string
+  code?: string
+  name?: string
+  description?: string
+  status?: string
+  location?: unknown
+  operator?: { id?: string; name?: string; hederaAccountId?: string }
+  topicId?: string
+  tokenId?: string
+  createdAt?: string
+  settlements?: ApiSettlement[]
+  memberships?: ApiMembership[]
+  events?: ApiEvent[]
+  documents?: ApiDocument[]
+}
 
 interface WellPageProps {
   params: {
@@ -272,24 +374,7 @@ function formatNumber(num: number): string {
   return new Intl.NumberFormat('en-US').format(num)
 }
 
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'active':
-      return 'status-executed'
-    case 'maintenance':
-      return 'status-pending'
-    case 'inactive':
-      return 'status-inactive'
-    case 'completed':
-      return 'status-executed'
-    case 'pending':
-      return 'status-pending'
-    case 'failed':
-      return 'status-failed'
-    default:
-      return 'status-inactive'
-  }
-}
+// getStatusColor moved to shared util '@/lib/ui'
 
 function getEventTypeColor(eventType: string): string {
   switch (eventType) {
@@ -317,11 +402,169 @@ function getEventIcon(eventType: string): string {
     case 'TOKEN_MINTED':
       return '🪙'
     case 'PAYOUT_EXECUTED':
-      return '💰'
+      return '💸'
     case 'SETTLEMENT_REQUESTED':
-      return '📋'
-    default:
       return '📄'
+    default:
+      return '📌'
+  }
+}
+
+// Normalize various location shapes into a consistent object
+// Add a loose location type to support various possible fields from APIs
+type LooseLocation = WellLocation & { city?: string; town?: string; state?: string; province?: string; district?: string }
+
+function normalizeLocation(loc: LooseLocation | string | null | undefined): {
+  address: string
+  region: string
+  country: string
+  coordinates: { lat: number; lng: number } | null
+  display: string
+} {
+  if (!loc) {
+    return { address: '—', region: '—', country: '—', coordinates: null, display: '—' }
+  }
+  // String input (e.g., "Lagos, Nigeria")
+  if (typeof loc === 'string') {
+    const str = loc.trim()
+    // Heuristic: last part as country, first as region
+    const parts = str.split(',').map((p: string) => p.trim()).filter(Boolean)
+    const country = parts.length > 0 ? parts[parts.length - 1] : '—'
+    const region = parts.length > 1 ? parts[0] : str
+    return { address: str, region: region, country: country, coordinates: null, display: str }
+  }
+  // Object input
+  const address = (loc.address ?? loc.region ?? loc.city ?? loc.town ?? '—') as string
+  const region = (loc.region ?? loc.state ?? loc.province ?? loc.district ?? '—') as string
+  const country = (loc.country ?? '—') as string
+  const coordinates = loc.coordinates && typeof loc.coordinates === 'object'
+    ? ({ lat: Number(loc.coordinates.lat), lng: Number(loc.coordinates.lng) })
+    : null
+  const display = [region !== '—' ? region : null, country !== '—' ? country : null]
+    .filter(Boolean)
+    .join(', ') || (address !== '—' ? address : '—')
+  return { address, region, country, coordinates, display }
+}
+
+function adaptApiWellToUi(w: unknown): WellUI {
+  if (!w || typeof w !== 'object') {
+    return {
+      id: '', code: '', name: '', description: '',
+      location: { address: '—', region: '—', country: '—', coordinates: null, display: '—' },
+      status: 'inactive',
+      operator: { id: '', name: '—' },
+      hedera: { topicId: '—', tokenId: '—', accountId: '—' },
+      technical: { capacity: 0, depth: 0, pumpType: '—', installationDate: new Date(), lastMaintenance: new Date(), nextMaintenance: new Date() },
+      financial: { totalInvestment: 0, investorCount: 0, monthlyRevenue: 0, totalRevenue: 0, roi: 0 },
+      production: { currentMonth: 0, lastMonth: 0, yearToDate: 0, allTime: 0, efficiency: 0 },
+      investors: [], timeline: [], documents: []
+    }
+  }
+  const aw = w as ApiWell
+
+  const settlements = Array.isArray(aw.settlements) ? aw.settlements : []
+  const executed = [...settlements]
+    .filter((s: ApiSettlement) => ((s?.status ?? '').toUpperCase() === 'EXECUTED'))
+    .sort((a: ApiSettlement, b: ApiSettlement) => new Date(b?.createdAt ?? Date.now()).getTime() - new Date(a?.createdAt ?? Date.now()).getTime())
+  const last = executed[0]
+  const prev = executed[1]
+
+  const sumGross = settlements.reduce((acc: number, s: ApiSettlement) => acc + (Number(s?.grossRevenue) || 0), 0)
+  const sumKwh = settlements.reduce((acc: number, s: ApiSettlement) => acc + (Number(s?.kwhTotal) || 0), 0)
+  const now = new Date()
+  const yearToDateKwh = settlements
+    .filter((s: ApiSettlement) => {
+      const d = new Date(s?.periodStart ?? s?.createdAt ?? now)
+      return d.getFullYear() === now.getFullYear()
+    })
+    .reduce((acc: number, s: ApiSettlement) => acc + (Number(s?.kwhTotal) || 0), 0)
+
+  const memberships = Array.isArray(aw.memberships) ? aw.memberships : []
+  const investors: Investor[] = memberships.map((m: ApiMembership) => ({
+    id: m?.user?.id ?? m?.id ?? '',
+    name: m?.user?.name ?? '—',
+    investment: 0,
+    percentage: ((Number(m?.shareBps) || 0) / 100),
+    joinedAt: new Date(m?.createdAt ?? aw?.createdAt ?? now)
+  }))
+
+  const events: WellTimelineEvent[] = Array.isArray(aw.events) ? aw.events.map((e: ApiEvent) => {
+    let payload: unknown = null
+    try {
+      payload = e?.payloadJson ? JSON.parse(e.payloadJson) : null
+    } catch (error: unknown) {
+      // Ignore parsing errors
+    }
+    const details = typeof payload === 'object' && payload && 'details' in payload ? (payload as { details?: string }).details ?? '' : ''
+    return {
+      id: e?.id,
+      type: e?.type ?? 'EVENT',
+      title: (e?.type ?? 'Event').toString().replace(/_/g, ' '),
+      description: details,
+      timestamp: new Date(e?.consensusTime ?? e?.createdAt ?? now),
+      txId: e?.txId,
+      status: 'completed'
+    }
+  }) : []
+
+  const documents: WellDocument[] = Array.isArray(aw.documents) ? aw.documents.map((d: ApiDocument) => ({
+    id: d?.id,
+    name: d?.name ?? 'Document',
+    type: d?.type ?? 'FILE',
+    size: '—',
+    uploadedAt: new Date(d?.createdAt ?? now),
+    uploadedBy: aw?.operator?.name ?? '—'
+  })) : []
+
+  const technical: WellTechnical = {
+    capacity: Math.round(Number(last?.kwhTotal) || 0),
+    depth: 0,
+    pumpType: '—',
+    installationDate: new Date(aw?.createdAt ?? now),
+    lastMaintenance: new Date(aw?.createdAt ?? now),
+    nextMaintenance: new Date(aw?.createdAt ?? now)
+  }
+
+  const financial: WellFinancial = {
+    totalInvestment: 0,
+    investorCount: investors.length,
+    monthlyRevenue: Number(last?.grossRevenue) || 0,
+    totalRevenue: sumGross,
+    roi: Number(((sumGross > 0 ? (sumGross / 10000) * 100 : 0)).toFixed(1))
+  }
+
+  const production: WellProduction = {
+    currentMonth: Number(last?.kwhTotal) || 0,
+    lastMonth: Number(prev?.kwhTotal) || 0,
+    yearToDate: yearToDateKwh,
+    allTime: sumKwh,
+    efficiency: last && prev ? Math.min(100, Math.round(((Number(last?.kwhTotal) || 0) / Math.max(1, Number(prev?.kwhTotal) || 1)) * 100)) : 90
+  }
+
+  const loc = normalizeLocation(aw?.location as WellLocation | string | null | undefined)
+
+  return {
+    id: aw?.id ?? '',
+    code: aw?.code ?? '—',
+    name: aw?.name ?? '—',
+    description: (aw?.description ?? `Tokenized water well located at ${loc.display}.`).toString(),
+    location: loc,
+    status: (aw?.status ?? 'active') as string,
+    operator: {
+      id: aw?.operator?.id ?? '',
+      name: aw?.operator?.name ?? '—'
+    },
+    hedera: {
+      topicId: aw?.topicId ?? '—',
+      tokenId: aw?.tokenId ?? '—',
+      accountId: aw?.operator?.hederaAccountId ?? '—'
+    },
+    technical,
+    financial,
+    production,
+    investors,
+    timeline: events,
+    documents
   }
 }
 
@@ -329,12 +572,137 @@ export default function WellDetailPage({ params }: WellPageProps) {
   const wellId = params.id
   const [showInvestorsModal, setShowInvestorsModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
-  const well = mockWellData[wellId as keyof typeof mockWellData]
-  
-  if (!well) {
-    notFound()
+  const [apiWell, setApiWell] = useState<WellUI | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetch(`/api/wells/${wellId}`)
+        if (!res.ok) throw new Error('Well not found')
+        const data = await res.json()
+        if (!cancelled) setApiWell(adaptApiWellToUi(data))
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Failed to load well'
+        if (!cancelled) setError(message)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [wellId])
+
+  const well = apiWell ?? (mockWellData as Record<string, WellUI>)[wellId]
+
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header Skeleton */}
+        <div className="bg-white rounded-lg shadow-card p-6 mb-8">
+          <div className="flex items-start justify-between">
+            <div className="flex-1 space-y-3">
+              <Skeleton width="w-64" height="h-8" />
+              <div className="flex items-center gap-2">
+                <Skeleton width="w-20" height="h-6" className="rounded-full" />
+                <Skeleton width="w-24" height="h-6" className="rounded-full" />
+              </div>
+              <Skeleton width="w-full" height="h-4" />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Skeleton width="w-40" height="h-4" />
+                <Skeleton width="w-56" height="h-4" />
+                <Skeleton width="w-48" height="h-4" />
+                <Skeleton width="w-32" height="h-4" />
+              </div>
+            </div>
+            <div className="flex space-x-3">
+              <Skeleton width="w-24" height="h-10" />
+              <Skeleton width="w-24" height="h-10" />
+            </div>
+          </div>
+        </div>
+      
+        {/* Key Metrics Skeleton */}
+        <WellKPISkeleton />
+      
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
+          {/* Timeline Skeleton */}
+          <div className="lg:col-span-2 bg-white rounded-lg shadow-card p-6">
+            <div className="mb-4">
+              <Skeleton width="w-40" height="h-6" />
+            </div>
+            <EventsListSkeleton />
+          </div>
+      
+          {/* Details Skeleton */}
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow-card p-6">
+              <Skeleton width="w-40" height="h-6" />
+              <div className="mt-4 space-y-3">
+                <Skeleton width="w-full" height="h-4" />
+                <Skeleton width="w-full" height="h-4" />
+                <Skeleton width="w-full" height="h-4" />
+                <Skeleton width="w-full" height="h-4" />
+              </div>
+            </div>
+            <div className="bg-white rounded-lg shadow-card p-6">
+              <Skeleton width="w-48" height="h-6" />
+              <div className="mt-4 space-y-3">
+                <Skeleton width="w-64" height="h-4" />
+                <Skeleton width="w-64" height="h-4" />
+                <Skeleton width="w-64" height="h-4" />
+              </div>
+            </div>
+          </div>
+        </div>
+      
+        {/* Documents Skeleton */}
+        <div className="mt-8 bg-white rounded-lg shadow-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <Skeleton width="w-40" height="h-6" />
+            <Skeleton width="w-28" height="h-8" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }, (_, i: number) => i).map((i: number) => (
+              <div key={i} className="border border-gray-200 rounded-lg p-4 space-y-2">
+                <Skeleton width="w-44" height="h-5" />
+                <Skeleton width="w-24" height="h-4" />
+                <div className="flex gap-2">
+                  <Skeleton width="w-20" height="h-6" className="rounded-full" />
+                  <Skeleton width="w-20" height="h-6" className="rounded-full" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
   }
-  
+
+  if (!well) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <div className="bg-white rounded-lg shadow-card p-8 text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Well not found</h1>
+          <p className="text-sm text-gray-600 mb-6">ID: {wellId}. {error ? `Error: ${error}` : 'This resource may have been deleted or the link is invalid.'}</p>
+          <Link href="/wells" className="btn-primary">Back to Wells</Link>
+        </div>
+      </div>
+    )
+  }
+
+  const locationText = typeof well?.location === 'string'
+    ? well.location
+    : well?.location?.display ?? well?.location?.region ?? well?.location?.address ?? 'N/A'
+
+  const timelineEvents: WellTimelineEvent[] = Array.isArray(well?.timeline)
+    ? well.timeline
+    : []
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Breadcrumb */}
@@ -361,7 +729,7 @@ export default function WellDetailPage({ params }: WellPageProps) {
               <svg className="w-6 h-6 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"></path>
               </svg>
-              <span className="ml-1 text-sm font-medium text-gray-500 md:ml-2">{well.code}</span>
+              <span className="ml-1 text-sm font-medium text-gray-500 md:ml-2">{well?.code ?? '—'}</span>
             </div>
           </li>
         </ol>
@@ -372,7 +740,7 @@ export default function WellDetailPage({ params }: WellPageProps) {
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <div className="flex items-center space-x-3 mb-2">
-              <h1 className="text-3xl font-bold text-gray-900">{well.name}</h1>
+              <h1 className="text-3xl font-bold text-gray-900">{well?.name ?? '—'}</h1>
               <span className={`text-sm px-3 py-1 rounded-full ${getStatusColor(well.status)}`}>
                 {well.status.toUpperCase()}
               </span>
@@ -385,11 +753,11 @@ export default function WellDetailPage({ params }: WellPageProps) {
               </div>
               <div>
                 <span className="text-gray-500">Location:</span>
-                <span className="ml-2 font-medium">{well.location.region}</span>
+                <span className="ml-2 font-medium">{locationText}</span>
               </div>
               <div>
                 <span className="text-gray-500">Operator:</span>
-                <span className="ml-2 font-medium">{well.operator.name}</span>
+                <span className="ml-2 font-medium">{well.operator?.name ?? '—'}</span>
               </div>
               <div>
                 <span className="text-gray-500">Capacity:</span>
@@ -488,30 +856,30 @@ export default function WellDetailPage({ params }: WellPageProps) {
           <div className="p-6">
             <div className="flow-root">
               <ul className="-mb-8">
-                {well.timeline.map((event, eventIdx) => (
-                  <li key={event.id}>
+                {(timelineEvents as WellTimelineEvent[]).map((event: WellTimelineEvent, eventIdx: number) => (
+                  <li key={event.id ?? eventIdx}>
                     <div className="relative pb-8">
-                      {eventIdx !== well.timeline.length - 1 ? (
+                      {eventIdx !== timelineEvents.length - 1 ? (
                         <span className="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200" aria-hidden="true" />
                       ) : null}
                       <div className="relative flex space-x-3">
                         <div>
                           <span className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center text-sm">
-                            {getEventIcon(event.type)}
+                            {getEventIcon(event.type ?? 'EVENT')}
                           </span>
                         </div>
                         <div className="min-w-0 flex-1 pt-1.5 flex justify-between space-x-4">
                           <div>
                             <div className="flex items-center space-x-2 mb-1">
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getEventTypeColor(event.type)}`}>
-                                {event.type.replace('_', ' ')}
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getEventTypeColor((event?.type ?? 'EVENT'))}`}>
+                                {(event?.type ?? 'EVENT').toString().replace('_', ' ')}
                               </span>
-                              <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(event.status)}`}>
-                                {event.status.toUpperCase()}
+                              <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor((event?.status ?? 'completed'))}`}>
+                                {(event?.status ?? 'completed').toString().toUpperCase()}
                               </span>
                             </div>
-                            <p className="text-sm font-medium text-gray-900">{event.title}</p>
-                            <p className="text-sm text-gray-500">{event.description}</p>
+                            <p className="text-sm font-medium text-gray-900">{event?.title ?? 'Event'}</p>
+                            <p className="text-sm text-gray-500">{event?.description ?? ''}</p>
                             <div className="mt-2">
                               <a 
                                 href={`https://hashscan.io/testnet/transaction/${event.txId}`}
@@ -524,7 +892,7 @@ export default function WellDetailPage({ params }: WellPageProps) {
                             </div>
                           </div>
                           <div className="text-right text-sm whitespace-nowrap text-gray-500">
-                            <time dateTime={event.timestamp.toISOString()}>{formatDateTime(event.timestamp)}</time>
+                            <time dateTime={(event?.timestamp ?? event?.createdAt ?? new Date()).toString()}>{formatDateTime(new Date(event?.timestamp ?? event?.createdAt ?? Date.now()))}</time>
                           </div>
                         </div>
                       </div>
@@ -609,7 +977,7 @@ export default function WellDetailPage({ params }: WellPageProps) {
             </div>
             <div className="p-6">
               <div className="space-y-4">
-                {well.investors.slice(0, 3).map((investor) => (
+                {(well.investors ?? []).slice(0, 3).map((investor: { id: string; name: string; investment: number; percentage: number; joinedAt: Date }) => (
                   <div key={investor.id} className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-900">{investor.name}</p>
@@ -626,6 +994,7 @@ export default function WellDetailPage({ params }: WellPageProps) {
                 <button 
                   className="w-full btn-secondary text-sm"
                   onClick={() => setShowInvestorsModal(true)}
+                  disabled={(well?.investors ?? []).length === 0}
                 >
                   View All Investors
                 </button>
@@ -651,7 +1020,7 @@ export default function WellDetailPage({ params }: WellPageProps) {
           </div>
           <div className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {well.documents.map((doc) => (
+              {(well.documents ?? []).map((doc: WellDocument) => (
                 <div key={doc.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1">
@@ -659,7 +1028,7 @@ export default function WellDetailPage({ params }: WellPageProps) {
                       <div className="flex items-center space-x-2 text-xs text-gray-500">
                         <span>{doc.type}</span>
                         <span>•</span>
-                        <span>{doc.size}</span>
+                        <span>{doc.size ?? '—'}</span>
                       </div>
                     </div>
                     <button className="text-blue-600 hover:text-blue-800">
@@ -670,7 +1039,7 @@ export default function WellDetailPage({ params }: WellPageProps) {
                   </div>
                   <div className="text-xs text-gray-500">
                     <p>Uploaded by {doc.uploadedBy}</p>
-                    <p>{formatDate(doc.uploadedAt)}</p>
+                    <p>{formatDate(doc.uploadedAt ?? new Date())}</p>
                   </div>
                 </div>
               ))}
@@ -683,17 +1052,16 @@ export default function WellDetailPage({ params }: WellPageProps) {
       <InvestorsModal 
         isOpen={showInvestorsModal}
         onClose={() => setShowInvestorsModal(false)}
-        wellName={well.name}
-        investors={well.investors}
+        wellName={well?.name ?? '—'}
+        investors={(well?.investors ?? [])}
       />
       
       <UploadDocumentModal 
         isOpen={showUploadModal}
         onClose={() => setShowUploadModal(false)}
-        wellName={well.name}
+        wellName={well?.name ?? '—'}
         onUpload={(file, metadata) => {
           console.log('Uploading file:', file.name, 'with metadata:', metadata)
-          // TODO: Implement actual file upload logic
           alert(`Document "${metadata.name}" uploaded successfully!`)
         }}
       />

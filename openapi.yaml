@@ -1,10 +1,21 @@
 openapi: 3.1.0
 info:
-  title: Waternity Hedera API
+  title: Waternity API
   description: |
-    Waternity is a decentralized water infrastructure platform built on Hedera Hashgraph.
-    This API provides endpoints for authentication, well management, HCS events, settlements,
-    document anchoring, and system monitoring.
+    Decentralized water well management and tokenization platform on Hedera Hashgraph.
+    
+    ## Features
+    - **Authentication**: Email/password login with Hedera wallet integration
+    - **HCS Events**: Publish and retrieve consensus events
+    - **Settlement Management**: Revenue calculation and distribution
+    - **Document Anchoring**: Immutable document verification on Hedera
+    - **Well Management**: Water well operations and monitoring
+    
+    ## Error Handling
+    All endpoints return consistent error responses with the shape `{ error, message? }`.
+    
+    ## Idempotency
+    Write operations support idempotency via the `Idempotency-Key` header.
   version: 1.0.0
   contact:
     name: Waternity Team
@@ -16,459 +27,36 @@ info:
 servers:
   - url: http://localhost:3000
     description: Development server
-  - url: https://api.waternity.io
+  - url: https://waternity.io
     description: Production server
 
-security:
-  - cookieAuth: []
-
-components:
-  securitySchemes:
-    cookieAuth:
-      type: apiKey
-      in: cookie
-      name: session
-      description: Session cookie for authentication
-
-  schemas:
-    # HCS Event Schema
-    HCSEvent:
-      type: object
-      properties:
-        messageId:
-          type: string
-          format: uuid
-          description: Unique message identifier for idempotency
-        wellId:
-          type: string
-          description: Well identifier
-        topicId:
-          type: string
-          pattern: '^0\.0\.[0-9]+$'
-          description: Hedera topic ID
-        eventType:
-          type: string
-          enum: [METER_READING, VALVE_COMMAND, DOC_ANCHORED, SETTLEMENT_REQUESTED, SETTLEMENT_APPROVED, SETTLEMENT_EXECUTED, TOKEN_MINTED, PAYOUT_DISTRIBUTED]
-          description: Type of HCS event
-        payload:
-          type: object
-          description: Event-specific payload data
-        submittedBy:
-          type: string
-          pattern: '^0\.0\.[0-9]+$'
-          description: Account ID of the event submitter
-        submitKey:
-          type: string
-          description: Submit key for the topic (if required)
-        memo:
-          type: string
-          maxLength: 100
-          description: Optional memo for the event
-      required: [messageId, wellId, topicId, eventType, payload, submittedBy]
-      additionalProperties: false
-    
-    # Settlement Request Schema
-    SettlementRequest:
-      type: object
-      properties:
-        messageId:
-          type: string
-          format: uuid
-          description: Unique message identifier for idempotency
-        wellId:
-          type: string
-          description: Well identifier
-        periodStart:
-          type: string
-          format: date-time
-          description: Start of settlement period
-        periodEnd:
-          type: string
-          format: date-time
-          description: End of settlement period
-        kwhTotal:
-          type: number
-          minimum: 0
-          description: Total kWh generated in the period
-        grossRevenue:
-          type: number
-          minimum: 0
-          description: Gross revenue for the period
-        payouts:
-          type: array
-          items:
-            type: object
-            properties:
-              recipientAccount:
-                type: string
-                pattern: '^0\.0\.[0-9]+$'
-                description: Hedera account ID of recipient
-              assetType:
-                type: string
-                enum: [HBAR, TOKEN]
-                description: Type of asset for payout
-              amount:
-                type: number
-                minimum: 0
-                description: Amount to pay out
-              tokenId:
-                type: string
-                pattern: '^0\.0\.[0-9]+$'
-                description: Token ID if assetType is TOKEN
-            required: [recipientAccount, assetType, amount]
-        requestedBy:
-          type: string
-          pattern: '^0\.0\.[0-9]+$'
-          description: Account ID of the requester
-        timestamp:
-          type: string
-          format: date-time
-          description: Timestamp of the request
-      required: [messageId, wellId, periodStart, periodEnd, kwhTotal, grossRevenue, payouts, requestedBy, timestamp]
-      additionalProperties: false
-    
-    # Settlement Approve Schema
-    SettlementApprove:
-      type: object
-      properties:
-        messageId:
-          type: string
-          format: uuid
-          description: Unique message identifier for idempotency
-        settlementId:
-          type: string
-          description: Settlement identifier to approve
-        approvedBy:
-          type: string
-          pattern: '^0\.0\.[0-9]+$'
-          description: Account ID of the approver
-        approvalNotes:
-          type: string
-          maxLength: 500
-          description: Optional notes for the approval
-        escrowTxId:
-          type: string
-          description: Transaction ID for escrow setup
-        timestamp:
-          type: string
-          format: date-time
-          description: Timestamp of the approval
-      required: [messageId, settlementId, approvedBy, timestamp]
-      additionalProperties: false
-    
-    # Settlement Execute Schema
-    SettlementExecute:
-      type: object
-      properties:
-        messageId:
-          type: string
-          format: uuid
-          description: Unique message identifier for idempotency
-        settlementId:
-          type: string
-          description: Settlement identifier to execute
-        executedBy:
-          type: string
-          pattern: '^0\.0\.[0-9]+$'
-          description: Account ID of the executor
-        payoutTransactions:
-          type: array
-          items:
-            type: object
-            properties:
-              recipientAccount:
-                type: string
-                pattern: '^0\.0\.[0-9]+$'
-                description: Recipient account ID
-              txId:
-                type: string
-                description: Transaction ID for the payout
-              amount:
-                type: number
-                minimum: 0
-                description: Amount paid out
-              assetType:
-                type: string
-                enum: [HBAR, TOKEN]
-                description: Type of asset paid out
-              tokenId:
-                type: string
-                pattern: '^0\.0\.[0-9]+$'
-                description: Token ID if assetType is TOKEN
-              status:
-                type: string
-                enum: [SUCCESS, FAILED, PENDING]
-                description: Status of the payout transaction
-            required: [recipientAccount, txId, amount, assetType, status]
-        timestamp:
-          type: string
-          format: date-time
-          description: Timestamp of the execution
-      required: [messageId, settlementId, executedBy, timestamp]
-      additionalProperties: false
-    
-    # Anchor Document Schema
-    AnchorDocument:
-      type: object
-      properties:
-        messageId:
-          type: string
-          format: uuid
-          description: Unique message identifier for idempotency
-        wellId:
-          type: string
-          description: Well identifier
-        documentType:
-          type: string
-          enum: [METER_READING, MAINTENANCE_REPORT, INSPECTION_CERTIFICATE, FINANCIAL_STATEMENT, COMPLIANCE_DOCUMENT, OTHER]
-          description: Type of document being anchored
-        cid:
-          type: string
-          pattern: '^Qm[1-9A-HJ-NP-Za-km-z]{44}$|^bafy[a-z2-7]{55}$'
-          description: IPFS Content Identifier (CID)
-        hfsFileId:
-          type: string
-          pattern: '^0\.0\.[0-9]+$'
-          description: Hedera File Service file ID (optional)
-        digestAlgo:
-          type: string
-          enum: [SHA256, SHA3-256, BLAKE2B]
-          description: Hash algorithm used for document digest
-        digestHex:
-          type: string
-          pattern: '^[a-fA-F0-9]{64}$'
-          description: Hexadecimal hash digest of the document
-        bundleContentBase64:
-          type: string
-          description: Base64 encoded content to be stored on HFS (optional)
-        metadata:
-          type: object
-          description: Additional metadata for the document
-      required: [messageId, wellId, documentType, digestAlgo, digestHex]
-      additionalProperties: false
-    
-    # Common response schemas
-    Error:
-      type: object
-      properties:
-        error:
-          type: string
-          description: Error code
-        message:
-          type: string
-          description: Human-readable error message
-        details:
-          type: object
-          description: Additional error details
-      required:
-        - error
-        - message
-    
-    ValidationError:
-      type: object
-      properties:
-        error:
-          type: string
-          enum: [validation_error]
-        message:
-          type: string
-        details:
-          type: object
-          properties:
-            field:
-              type: string
-            code:
-              type: string
-            expected:
-              type: string
-      required:
-        - error
-        - message
-    
-    User:
-      type: object
-      properties:
-        id:
-          type: string
-        username:
-          type: string
-        role:
-          type: string
-          enum: [ADMIN, OPERATOR, AGENT, INVESTOR, USER]
-        hederaAccountId:
-          type: string
-          pattern: '^0\.0\.[0-9]+$'
-        createdAt:
-          type: string
-          format: date-time
-      required:
-        - id
-        - username
-        - role
-    
-    Well:
-      type: object
-      properties:
-        id:
-          type: string
-        code:
-          type: string
-        name:
-          type: string
-        location:
-          type: string
-        topicId:
-          type: string
-          pattern: '^0\.0\.[0-9]+$'
-        tokenId:
-          type: string
-          pattern: '^0\.0\.[0-9]+$'
-        operatorUserId:
-          type: string
-        status:
-          type: string
-          enum: [ACTIVE, INACTIVE, MAINTENANCE]
-        createdAt:
-          type: string
-          format: date-time
-      required:
-        - id
-        - code
-        - name
-        - location
-        - topicId
-        - operatorUserId
-    
-    WellEvent:
-      type: object
-      properties:
-        id:
-          type: string
-        wellId:
-          type: string
-        eventType:
-          type: string
-        payload:
-          type: object
-        transactionId:
-          type: string
-        sequenceNumber:
-          type: string
-        timestamp:
-          type: string
-          format: date-time
-      required:
-        - id
-        - wellId
-        - eventType
-        - payload
-        - timestamp
-    
-    HealthCheck:
-      type: object
-      properties:
-        status:
-          type: string
-          enum: [healthy, unhealthy]
-        timestamp:
-          type: string
-          format: date-time
-        version:
-          type: string
-        environment:
-          type: string
-        services:
-          type: object
-          properties:
-            database:
-              type: object
-              properties:
-                status:
-                  type: string
-                  enum: [connected, disconnected, error]
-                latency:
-                  type: number
-                error:
-                  type: string
-            hedera:
-              type: object
-              properties:
-                network:
-                  type: string
-                mirrorNode:
-                  type: object
-                  properties:
-                    status:
-                      type: string
-                      enum: [reachable, unreachable, error]
-                    latency:
-                      type: number
-                    error:
-                      type: string
-        uptime:
-          type: number
-        memory:
-          type: object
-          properties:
-            used:
-              type: number
-            total:
-              type: number
-            percentage:
-              type: number
-      required:
-        - status
-        - timestamp
-        - version
-        - environment
-        - services
-        - uptime
-        - memory
-
 paths:
+  # Authentication Endpoints
   /api/auth/login:
     post:
-      tags:
-        - Authentication
+      operationId: loginUser
       summary: User login
-      description: Authenticate user and create session
+      description: Authenticate user with email and password
+      tags: [Authentication]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [email, password]
               properties:
-                username:
+                email:
                   type: string
-                  example: operator1
+                  format: email
+                  example: "operator@waternity.io"
                 password:
                   type: string
                   format: password
-                  example: password123
-              required:
-                - username
-                - password
-            examples:
-              operator_login:
-                summary: Operator login
-                value:
-                  username: operator1
-                  password: password123
-              admin_login:
-                summary: Admin login
-                value:
-                  username: admin
-                  password: admin123
+                  example: "securePassword123"
       responses:
         '200':
           description: Login successful
-          headers:
-            Set-Cookie:
-              description: Session cookie
-              schema:
-                type: string
-                example: session=eyJhbGciOiJIUzI1NiJ9...; Path=/; HttpOnly; SameSite=Strict
           content:
             application/json:
               schema:
@@ -479,54 +67,19 @@ paths:
                     example: true
                   user:
                     $ref: '#/components/schemas/User'
-              examples:
-                success_response:
-                  summary: Successful login
-                  value:
-                    success: true
-                    user:
-                      id: user_123
-                      username: operator1
-                      role: OPERATOR
-                      hederaAccountId: "0.0.12345"
-                      createdAt: "2024-01-01T00:00:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Invalid credentials
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                invalid_credentials:
-                  summary: Invalid username or password
-                  value:
-                    error: invalid_credentials
-                    message: Invalid username or password
-        '422':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationError'
-              examples:
-                missing_username:
-                  summary: Missing username
-                  value:
-                    error: validation_error
-                    message: Validation failed
-                    details:
-                      field: username
-                      code: required
-                      expected: string
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
 
   /api/auth/logout:
     post:
-      tags:
-        - Authentication
+      operationId: logoutUser
       summary: User logout
-      description: Destroy user session
-      security:
-        - cookieAuth: []
+      description: Invalidate user session
+      tags: [Authentication]
       responses:
         '200':
           description: Logout successful
@@ -538,240 +91,104 @@ paths:
                   success:
                     type: boolean
                     example: true
-                  message:
-                    type: string
-                    example: Logged out successfully
-        '401':
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
 
   /api/auth/me:
     get:
-      tags:
-        - Authentication
+      operationId: getCurrentUser
       summary: Get current user
-      description: Get information about the currently authenticated user
+      description: Get current authenticated user information
+      tags: [Authentication]
       security:
-        - cookieAuth: []
+        - sessionAuth: []
       responses:
         '200':
-          description: User information
+          description: Current user information
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
-              examples:
-                current_user:
-                  summary: Current user info
-                  value:
-                    id: user_123
-                    username: operator1
-                    role: OPERATOR
-                    hederaAccountId: "0.0.12345"
-                    createdAt: "2024-01-01T00:00:00Z"
         '401':
-          description: Not authenticated
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/csrf:
+    get:
+      operationId: getCsrfToken
+      summary: Get CSRF token
+      description: Get CSRF token for form submissions
+      tags: [Authentication]
+      responses:
+        '200':
+          description: CSRF token
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                type: object
+                properties:
+                  csrfToken:
+                    type: string
+                    example: "abc123def456"
 
+  # HCS Events
   /api/hcs/events:
     post:
-      tags:
-        - HCS Events
-      summary: Submit HCS event
-      description: Submit an event to Hedera Consensus Service
+      operationId: publishHcsEvent
+      summary: Publish HCS event
+      description: Publish event to Hedera Consensus Service
+      tags: [HCS]
       security:
-        - cookieAuth: []
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/HCSEvent'
-            examples:
-              meter_reading:
-                summary: Meter reading event
-                value:
-                  messageId: "550e8400-e29b-41d4-a716-446655440000"
-                  wellId: "WELL_001"
-                  topicId: "0.0.12345"
-                  eventType: "METER_READING"
-                  payload:
-                    reading: 1250.5
-                    unit: "kWh"
-                    timestamp: "2024-01-01T12:00:00Z"
-                  submittedBy: "0.0.67890"
-                  memo: "Daily meter reading"
-              valve_command:
-                summary: Valve command event
-                value:
-                  messageId: "550e8400-e29b-41d4-a716-446655440001"
-                  wellId: "WELL_001"
-                  topicId: "0.0.12345"
-                  eventType: "VALVE_COMMAND"
-                  payload:
-                    action: "OPEN"
-                    percentage: 75
-                    timestamp: "2024-01-01T12:00:00Z"
-                  submittedBy: "0.0.67890"
-                  memo: "Valve adjustment"
+              $ref: '#/components/schemas/HcsEventRequest'
       responses:
-        '201':
-          description: Event submitted successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  transactionId:
-                    type: string
-                    example: "0.0.12345@1640995200.123456789"
-                  sequenceNumber:
-                    type: string
-                    example: "42"
-                  messageId:
-                    type: string
-                    example: "550e8400-e29b-41d4-a716-446655440000"
-              examples:
-                 meter_reading_success:
-                   summary: Meter reading published successfully
-                   value:
-                     success: true
-                     transactionId: "0.0.12345@1640995200.123456789"
-                     sequenceNumber: "42"
-                     messageId: "550e8400-e29b-41d4-a716-446655440000"
-                 valve_command_success:
-                    summary: Valve command published successfully
-                    value:
-                      success: true
-                      transactionId: "0.0.12345@1640995200.123456790"
-                      sequenceNumber: "43"
-                      messageId: "550e8400-e29b-41d4-a716-446655440001"
         '200':
-          description: HCS event published successfully
+          description: Event published successfully
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  transactionId:
-                    type: string
-                    example: "0.0.12345@1640995200.123456789"
-                  sequenceNumber:
-                    type: string
-                    example: "42"
-                  messageId:
-                    type: string
-                    example: "550e8400-e29b-41d4-a716-446655440000"
-              examples:
-                hcs_success:
-                  summary: HCS event published successfully
-                  value:
-                    success: true
-                    transactionId: "0.0.12345@1640995200.123456789"
-                    sequenceNumber: "42"
-                    messageId: "550e8400-e29b-41d4-a716-446655440000"
+                $ref: '#/components/schemas/HcsEventResponse'
         '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                missing_idempotency:
-                  summary: Missing idempotency key
-                  value:
-                    error: missing_idempotency_key
-                    message: Idempotency key is required
-                duplicate_message:
-                  summary: Duplicate message ID
-                  value:
-                    error: duplicate_message_id
-                    message: Message ID already exists
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                unauthorized:
-                  summary: Authentication required
-                  value:
-                    error: unauthorized
-                    message: Authentication required
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Forbidden
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                insufficient_permissions:
-                  summary: Insufficient permissions
-                  value:
-                    error: forbidden
-                    message: Insufficient permissions to submit events for this well
-        '404':
-          description: Well not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                well_not_found:
-                  summary: Well not found
-                  value:
-                    error: well_not_found
-                    message: Well WELL_001 not found
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationError'
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/RateLimited'
 
+  # Wells Management
   /api/wells:
     get:
-      tags:
-        - Wells
-      summary: List wells
-      description: Get a list of all wells
+      operationId: getWells
+      summary: Get wells
+      description: Get list of water wells
+      tags: [Wells]
       security:
-        - cookieAuth: []
+        - sessionAuth: []
       parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
         - name: limit
           in: query
-          description: Maximum number of wells to return
           schema:
             type: integer
             minimum: 1
             maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of wells to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
-        - name: status
-          in: query
-          description: Filter by well status
-          schema:
-            type: string
-            enum: [ACTIVE, INACTIVE, MAINTENANCE]
+            default: 10
       responses:
         '200':
           description: List of wells
@@ -784,79 +201,80 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Well'
-                  total:
-                    type: integer
-                    example: 50
-                  limit:
-                    type: integer
-                    example: 20
-                  offset:
-                    type: integer
-                    example: 0
-              examples:
-                wells_list:
-                  summary: Wells list response
-                  value:
-                    wells:
-                      - id: "well_123"
-                        code: "WELL_001"
-                        name: "North Field Well #1"
-                        location: "North Field, Sector A"
-                        topicId: "0.0.12345"
-                        tokenId: "0.0.67890"
-                        operatorUserId: "user_456"
-                        status: "ACTIVE"
-                        createdAt: "2024-01-01T00:00:00Z"
-                    total: 50
-                    limit: 20
-                    offset: 0
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
         '401':
-          description: Not authenticated
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      operationId: createWell
+      summary: Create well
+      description: Create a new water well
+      tags: [Wells]
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWellRequest'
+      responses:
+        '201':
+          description: Well created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: '#/components/schemas/Well'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /api/wells/{id}/events:
     get:
-      tags:
-        - Wells
+      operationId: getWellEvents
       summary: Get well events
-      description: Get events for a specific well
+      description: Get HCS events for a specific well
+      tags: [Wells]
       security:
-        - cookieAuth: []
+        - sessionAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          description: Well ID
           schema:
             type: string
-            example: "well_123"
+          example: "well_123"
+        - name: refresh
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Pull latest events from Mirror Node
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
         - name: limit
           in: query
-          description: Maximum number of events to return
           schema:
             type: integer
             minimum: 1
             maximum: 100
             default: 20
-        - name: offset
-          in: query
-          description: Number of events to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
-        - name: eventType
-          in: query
-          description: Filter by event type
-          schema:
-            type: string
-            enum: [METER_READING, VALVE_COMMAND, DOC_ANCHORED, SETTLEMENT_REQUESTED, SETTLEMENT_APPROVED, SETTLEMENT_EXECUTED, TOKEN_MINTED, PAYOUT_DISTRIBUTED]
       responses:
         '200':
-          description: List of well events
+          description: Well events
           content:
             application/json:
               schema:
@@ -865,637 +283,1060 @@ paths:
                   events:
                     type: array
                     items:
-                      $ref: '#/components/schemas/WellEvent'
-                  total:
-                    type: integer
-                  limit:
-                    type: integer
-                  offset:
-                    type: integer
-              examples:
-                well_events:
-                  summary: Well events response
-                  value:
-                    events:
-                      - id: "event_123"
-                        wellId: "well_123"
-                        eventType: "METER_READING"
-                        payload:
-                          reading: 1250.5
-                          unit: "kWh"
-                        transactionId: "0.0.12345@1640995200.123456789"
-                        sequenceNumber: "42"
-                        timestamp: "2024-01-01T12:00:00Z"
-                    total: 100
-                    limit: 20
-                    offset: 0
+                      $ref: '#/components/schemas/HcsEvent'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Well not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
 
-  /api/settlements/request:
+  # HTS Tokens
+  /api/hts/tokens:
     post:
-      tags:
-        - Settlements
-      summary: Request settlement
-      description: Create a new settlement request
+      operationId: manageHtsTokens
+      summary: Create or mint HTS token
+      description: Create a new fungible token for a well (default) or mint additional supply when action=mint
+      tags: [HTS]
       security:
-        - cookieAuth: []
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+        - name: action
+          in: query
+          description: Action to perform. Use 'mint' to mint additional supply; omit or set to 'create' to create a token.
+          required: false
+          schema:
+            type: string
+            enum: [create, mint]
+            default: create
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SettlementRequest'
-            examples:
-              settlement_request:
-                summary: Settlement request
-                value:
-                  messageId: "550e8400-e29b-41d4-a716-446655440000"
-                  wellId: "WELL_001"
-                  periodStart: "2024-01-01T00:00:00Z"
-                  periodEnd: "2024-01-31T23:59:59Z"
-                  kwhTotal: 15000.5
-                  grossRevenue: 7500.25
-                  payouts:
-                    - recipientAccount: "0.0.12345"
-                      assetType: "HBAR"
-                      amount: 5000.0
-                    - recipientAccount: "0.0.67890"
-                      assetType: "TOKEN"
-                      amount: 1000.0
-                      tokenId: "0.0.11111"
-                  requestedBy: "0.0.54321"
-                  timestamp: "2024-02-01T00:00:00Z"
+              oneOf:
+                - type: object
+                  title: HtsTokenCreateRequest
+                  required: [messageId, wellId, name, symbol, decimals, initialSupply]
+                  properties:
+                    messageId:
+                      type: string
+                      format: uuid
+                      example: "550e8400-e29b-41d4-a716-446655440000"
+                    wellId:
+                      type: string
+                      example: "well_123"
+                    name:
+                      type: string
+                      example: "Water Token"
+                    symbol:
+                      type: string
+                      example: "WTR"
+                    decimals:
+                      type: integer
+                      minimum: 0
+                      maximum: 18
+                      example: 2
+                    initialSupply:
+                      type: string
+                      pattern: "^\\d+$"
+                      example: "1000000"
+                - type: object
+                  title: HtsMintRequest
+                  required: [messageId, tokenId, amount]
+                  properties:
+                    messageId:
+                      type: string
+                      format: uuid
+                      example: "550e8400-e29b-41d4-a716-446655440000"
+                    tokenId:
+                      type: string
+                      example: "0.0.345678"
+                    amount:
+                      type: string
+                      pattern: "^\\d+$"
+                      example: "1000"
       responses:
         '201':
-          description: Settlement request created
+          description: Token created successfully (action=create)
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success:
-                    type: boolean
-                    example: true
-                  settlementId:
+                  tokenId:
                     type: string
-                    example: "settlement_123"
+                    example: "0.0.345678"
                   transactionId:
                     type: string
-                    example: "0.0.12345@1640995200.123456789"
-              examples:
-                 settlement_created:
-                   summary: Settlement request created successfully
-                   value:
-                     success: true
-                     settlementId: "settlement_123"
-                     transactionId: "0.0.12345@1640995200.123456789"
+                    example: "0.0.123456@1640995200.123456789"
+                  status:
+                    type: string
+                    example: "SUCCESS"
+                  wellId:
+                    type: string
+                    example: "well_123"
+                  tokenName:
+                    type: string
+                    example: "Water Token"
+                  tokenSymbol:
+                    type: string
+                    example: "WTR"
         '200':
-          description: Settlement request created successfully
+          description: Tokens minted successfully (action=mint)
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success:
-                    type: boolean
-                    example: true
-                  settlementId:
-                    type: string
-                    example: "settlement_123"
                   transactionId:
                     type: string
-                    example: "0.0.12345@1640995200.123456789"
-              examples:
-                settlement_success:
-                  summary: Settlement request created successfully
-                  value:
-                    success: true
-                    settlementId: "settlement_123"
-                    transactionId: "0.0.12345@1640995200.123456789"
+                    example: "0.0.123456@1640995200.123456789"
+                  newTotalSupply:
+                    type: string
+                    example: "1010000"
+                  status:
+                    type: string
+                    example: "SUCCESS"
+                  wellId:
+                    type: string
+                    nullable: true
+                    example: "well_123"
+                  tokenId:
+                    type: string
+                    example: "0.0.345678"
+                  amount:
+                    type: number
+                    example: 1000
         '400':
-          description: Bad request
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # Settlements
+  /api/settlements/request:
+    post:
+      operationId: requestSettlement
+      summary: Request settlement
+      description: Create a new settlement request
+      tags: [Settlements]
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettlementRequestBody'
+      responses:
+        '201':
+          description: Settlement requested successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ValidationError'
-              examples:
-                validation_error:
-                  summary: Invalid settlement period
-                  value:
-                    error: "validation_error"
-                    message: "Validation failed"
-                    details:
-                      - field: "periodStart"
-                        message: "Period start date is required"
-                      - field: "kwhTotal"
-                        message: "Total kWh must be greater than 0"
+                $ref: '#/components/schemas/Settlement'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '409':
-          description: Settlement already exists for period
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                duplicate_settlement:
-                  summary: Settlement already exists
-                  value:
-                    error: "conflict"
-                    message: "Settlement already exists for this period"
+          $ref: '#/components/responses/Conflict'
         '422':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationError'
+          $ref: '#/components/responses/UnprocessableEntity'
 
   /api/settlements/approve:
     post:
-      tags:
-        - Settlements
+      operationId: approveSettlement
       summary: Approve settlement
-      description: Approve a pending settlement
+      description: Approve a settlement request (OPERATOR/AGENT/ADMIN only)
+      tags: [Settlements]
       security:
-        - cookieAuth: []
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SettlementApprove'
-            examples:
-              settlement_approve:
-                summary: Settlement approval
-                value:
-                  messageId: "550e8400-e29b-41d4-a716-446655440001"
-                  settlementId: "settlement_123"
-                  approvedBy: "0.0.54321"
-                  timestamp: "2024-02-01T12:00:00Z"
+              type: object
+              required: [settlementId]
+              properties:
+                settlementId:
+                  type: string
+                  example: "settlement_123"
+                notes:
+                  type: string
+                  example: "Approved after review"
       responses:
         '200':
-          description: Settlement approved
+          description: Settlement approved successfully
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  transactionId:
-                    type: string
-                    example: "0.0.12345@1640995200.123456789"
-              examples:
-                settlement_approved:
-                  summary: Settlement approved successfully
-                  value:
-                    success: true
-                    transactionId: "0.0.12345@1640995200.123456789"
+                $ref: '#/components/schemas/Settlement'
         '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationError'
-              examples:
-                approval_validation_error:
-                  summary: Invalid approval data
-                  value:
-                    error: "validation_error"
-                    message: "Validation failed"
-                    details:
-                      - field: "approvalNotes"
-                        message: "Approval notes are required"
-                execution_validation_error:
-                  summary: Invalid execution data
-                  value:
-                    error: "validation_error"
-                    message: "Validation failed"
-                    details:
-                      - field: "payoutTransactions"
-                        message: "At least one payout transaction is required"
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Settlement not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                settlement_not_found:
-                  summary: Settlement not found
-                  value:
-                    error: "not_found"
-                    message: "Settlement not found"
-        '422':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationError'
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /api/settlements/execute:
     post:
-      tags:
-        - Settlements
+      operationId: executeSettlement
       summary: Execute settlement
-      description: Execute an approved settlement
+      description: Execute approved settlement and distribute payouts
+      tags: [Settlements]
       security:
-        - cookieAuth: []
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SettlementExecute'
-            examples:
-              settlement_execute:
-                summary: Settlement execution
-                value:
-                  messageId: "550e8400-e29b-41d4-a716-446655440002"
-                  settlementId: "settlement_123"
-                  executedBy: "0.0.54321"
-                  timestamp: "2024-02-01T18:00:00Z"
+              type: object
+              required: [settlementId]
+              properties:
+                settlementId:
+                  type: string
+                  example: "settlement_123"
+                paymentAsset:
+                  type: string
+                  enum: [HBAR, TOKEN]
+                  default: HBAR
+                  example: "HBAR"
       responses:
         '200':
-          description: Settlement executed
+          description: Settlement executed successfully
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success:
-                    type: boolean
-                    example: true
-                  transactionId:
-                    type: string
-                    example: "0.0.12345@1640995200.123456789"
-                  payoutTransactions:
+                  settlement:
+                    $ref: '#/components/schemas/Settlement'
+                  payouts:
                     type: array
                     items:
-                      type: object
-                      properties:
-                        recipientAccount:
-                          type: string
-                        transactionId:
-                          type: string
-                        amount:
-                          type: number
-              examples:
-                settlement_executed:
-                  summary: Settlement executed successfully
-                  value:
-                    success: true
-                    transactionId: "0.0.12345@1640995200.123456789"
-                    payoutTransactions:
-                      - recipientAccount: "0.0.12345"
-                        transactionId: "0.0.12345@1640995200.123456790"
-                        amount: 5000.0
-                      - recipientAccount: "0.0.67890"
-                        transactionId: "0.0.12345@1640995200.123456791"
-                        amount: 1000.0
+                      $ref: '#/components/schemas/Payout'
+                  transactionId:
+                    type: string
+                    example: "0.0.123456@1640995200.123456789"
         '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationError'
-              examples:
-                execution_error:
-                  summary: Settlement execution failed
-                  value:
-                    error: "execution_failed"
-                    message: "Failed to execute settlement: Insufficient funds"
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Settlement not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '422':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationError'
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
+  # Documents
   /api/documents/anchor:
     post:
-      tags:
-        - Documents
+      operationId: anchorDocument
       summary: Anchor document
-      description: Anchor a document to Hedera File Service and HCS
+      description: Anchor document hash to Hedera for immutable proof
+      tags: [Documents]
       security:
-        - cookieAuth: []
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AnchorDocument'
-            examples:
-              anchor_document:
-                summary: Document anchoring
-                value:
-                  messageId: "550e8400-e29b-41d4-a716-446655440000"
-                  wellId: "WELL_001"
-                  documentType: "METER_READING"
-                  cid: "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG"
-                  digestAlgo: "SHA256"
-                  digestHex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                  bundleContentBase64: "SGVsbG8gV29ybGQ="
+              $ref: '#/components/schemas/DocumentAnchorRequest'
       responses:
         '201':
           description: Document anchored successfully
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  documentId:
-                    type: string
-                    example: "doc_123"
-                  hfsFileId:
-                    type: string
-                    example: "0.0.98765"
-                  transactionId:
-                    type: string
-                    example: "0.0.12345@1640995200.123456789"
-              examples:
-                 document_anchored:
-                   summary: Document anchored successfully
-                   value:
-                     success: true
-                     documentId: "doc_123"
-                     hfsFileId: "0.0.98765"
-                     transactionId: "0.0.12345@1640995200.123456789"
-        '200':
-          description: Document anchored successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  documentId:
-                    type: string
-                    example: "doc_123"
-                  hfsFileId:
-                    type: string
-                    example: "0.0.98765"
-                  transactionId:
-                    type: string
-                    example: "0.0.12345@1640995200.123456789"
-              examples:
-                anchor_success:
-                  summary: Document anchored successfully
-                  value:
-                    success: true
-                    documentId: "doc_123"
-                    hfsFileId: "0.0.98765"
-                    transactionId: "0.0.12345@1640995200.123456789"
+                $ref: '#/components/schemas/DocumentAnchorResponse'
         '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationError'
-              examples:
-                validation_error:
-                  summary: Invalid document data
-                  value:
-                    error: "validation_error"
-                    message: "Validation failed"
-                    details:
-                      - field: "documentType"
-                        message: "Document type is required"
-                      - field: "cid"
-                        message: "IPFS CID is required"
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '422':
-          description: Validation error or digest mismatch
-          content:
-            application/json:
-              schema:
-                oneOf:
-                  - $ref: '#/components/schemas/ValidationError'
-                  - type: object
-                    properties:
-                      error:
-                        type: string
-                        enum: [digest_mismatch]
-                      expected:
-                        type: string
-                      computed:
-                        type: string
-              examples:
-                digest_mismatch:
-                  summary: Digest mismatch
-                  value:
-                    error: digest_mismatch
-                    expected: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                    computed: "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"
+          $ref: '#/components/responses/UnprocessableEntity'
 
-  /api/audit/reports:
-    get:
-      tags:
-        - Audit
-      summary: Get audit reports
-      description: Retrieve audit reports for compliance and monitoring
+  # System
+  /api/system/pull-topic:
+    post:
+      operationId: pullTopicData
+      summary: Pull topic events
+      description: Pull latest events from Mirror Node for a topic
+      tags: [System]
       security:
-        - cookieAuth: []
-      parameters:
-        - name: wellId
-          in: query
-          description: Filter by well ID
-          schema:
-            type: string
-        - name: startDate
-          in: query
-          description: Start date for report period
-          schema:
-            type: string
-            format: date
-        - name: endDate
-          in: query
-          description: End date for report period
-          schema:
-            type: string
-            format: date
-        - name: reportType
-          in: query
-          description: Type of audit report
-          schema:
-            type: string
-            enum: [FINANCIAL, OPERATIONAL, COMPLIANCE, SECURITY]
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [wellId]
+              properties:
+                wellId:
+                  type: string
+                  example: "well_123"
+                fromTs:
+                  type: string
+                  format: date-time
+                  example: "2024-01-15T10:30:00Z"
       responses:
         '200':
-          description: Audit reports
+          description: Events pulled successfully
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  reports:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: string
-                        reportType:
-                          type: string
-                        wellId:
-                          type: string
-                        periodStart:
-                          type: string
-                          format: date-time
-                        periodEnd:
-                          type: string
-                          format: date-time
-                        summary:
-                          type: object
-                        createdAt:
-                          type: string
-                          format: date-time
-                  total:
+                  eventsProcessed:
                     type: integer
-              examples:
-                audit_reports:
-                  summary: Audit reports response
-                  value:
-                    reports:
-                      - id: "report_123"
-                        reportType: "FINANCIAL"
-                        wellId: "WELL_001"
-                        periodStart: "2024-01-01T00:00:00Z"
-                        periodEnd: "2024-01-31T23:59:59Z"
-                        summary:
-                          totalRevenue: 7500.25
-                          totalPayouts: 6000.0
-                          transactionCount: 150
-                        createdAt: "2024-02-01T00:00:00Z"
-                    total: 1
+                    example: 15
+                  lastConsensusTime:
+                    type: string
+                    format: date-time
+                    example: "2024-01-15T10:35:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Not authenticated
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # Dashboard
+  /api/dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      summary: Get dashboard statistics
+      description: Get key metrics for dashboard
+      tags: [Dashboard]
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Dashboard statistics
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: '#/components/schemas/DashboardStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
+  # Metadata
   /api/meta/links:
     get:
-      tags:
-        - Metadata
+      operationId: getMetaLinks
       summary: Get metadata links
-      description: Get links to external resources and metadata
+      description: Get HashScan and Mirror Node links for transactions
+      tags: [Metadata]
+      parameters:
+        - name: txId
+          in: query
+          schema:
+            type: string
+          example: "0.0.123456@1640995200.123456789"
+        - name: topicId
+          in: query
+          schema:
+            type: string
+          example: "0.0.789012"
       responses:
         '200':
-          description: Metadata links
+          description: External links
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  links:
-                    type: object
-                    properties:
-                      hederaNetwork:
-                        type: string
-                        example: "testnet"
-                      mirrorNode:
-                        type: string
-                        example: "https://testnet.mirrornode.hedera.com"
-                      explorer:
-                        type: string
-                        example: "https://hashscan.io/testnet"
-                      documentation:
-                        type: string
-                        example: "https://docs.waternity.io"
-                      support:
-                        type: string
-                        example: "https://support.waternity.io"
-              examples:
-                meta_links:
-                  summary: Metadata links response
-                  value:
-                    links:
-                      hederaNetwork: "testnet"
-                      mirrorNode: "https://testnet.mirrornode.hedera.com"
-                      explorer: "https://hashscan.io/testnet"
-                      documentation: "https://docs.waternity.io"
-                      support: "https://support.waternity.io"
+                  hashscan:
+                    type: string
+                    example: "https://hashscan.io/testnet/transaction/0.0.123456@1640995200.123456789"
+                  mirror:
+                    type: string
+                    example: "https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.123456@1640995200.123456789"
 
+  # Health and Documentation
   /api/health:
     get:
-      tags:
-        - System
+      operationId: getHealthStatus
       summary: Health check
-      description: Get system health status
+      description: |
+        Check API and system health status including:
+        - Hedera environment variables (HEDERA_NETWORK, HEDERA_ACCOUNT_ID, HEDERA_PRIVATE_KEY)
+        - Hedera SDK initialization capability
+        - Database connectivity
+        
+        Returns 200 with ok:false for missing environment variables.
+        Returns 503 for database connectivity issues.
+      tags: [System]
       responses:
         '200':
-          description: System is healthy
+          description: Health check completed (may include issues with environment variables)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthCheck'
+                $ref: '#/components/schemas/HealthResponse'
               examples:
-                healthy_system:
-                  summary: Healthy system response
+                healthy:
+                  summary: All systems healthy
                   value:
-                    status: "healthy"
-                    timestamp: "2024-01-01T12:00:00Z"
-                    version: "1.0.0"
-                    environment: "development"
-                    services:
-                      database:
-                        status: "connected"
-                        latency: 15
-                      hedera:
-                        network: "testnet"
-                        mirrorNode:
-                          status: "reachable"
-                          latency: 120
-                    uptime: 86400
-                    memory:
-                      used: 512000000
-                      total: 1073741824
-                      percentage: 47.7
+                    ok: true
+                    hedera:
+                      env: true
+                      network: "testnet"
+                      sdkReady: true
+                    db:
+                      connected: true
+                env_issues:
+                  summary: Environment variable issues
+                  value:
+                    ok: false
+                    hedera:
+                      env: false
+                      network: "unknown"
+                      sdkReady: false
+                    db:
+                      connected: true
         '503':
-          description: System is unhealthy
+          description: Database connectivity issues
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthCheck'
+                $ref: '#/components/schemas/HealthResponse'
               examples:
-                unhealthy_system:
-                  summary: Unhealthy system response
+                db_down:
+                  summary: Database connectivity failed
                   value:
-                    status: "unhealthy"
-                    timestamp: "2024-01-01T12:00:00Z"
-                    version: "1.0.0"
-                    environment: "development"
-                    services:
-                      database:
-                        status: "error"
-                        error: "Connection timeout"
-                      hedera:
-                        network: "testnet"
-                        mirrorNode:
-                          status: "unreachable"
-                          error: "Network error"
-                    uptime: 86400
-                    memory:
-                      used: 512000000
-                      total: 1073741824
-                      percentage: 47.7
+                    ok: false
+                    hedera:
+                      env: true
+                      network: "testnet"
+                      sdkReady: true
+                    db:
+                      connected: false
+
+  /api/docs:
+    get:
+      operationId: getApiDocs
+      summary: API Documentation
+      description: Get OpenAPI documentation
+      tags: [System]
+      parameters:
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [html, yaml]
+            default: html
+          description: Documentation format
+      responses:
+        '200':
+          description: API documentation
+          content:
+            text/html:
+              schema:
+                type: string
+            text/yaml:
+              schema:
+                type: string
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: wty_sess
+      description: HTTPOnly session cookie
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Unique key for idempotent operations
+      example: "550e8400-e29b-41d4-a716-446655440000"
+
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+      description: CSRF token required by middleware for mutation operations (POST/PUT/PATCH/DELETE). Obtain token from /api/auth/csrf endpoint and include in request header.
+      example: "abc123def456ghi789jkl012"
+
+  responses:
+    BadRequest:
+      description: Bad request - validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "validation_failed"
+            message: "Request validation failed"
+
+    Unauthorized:
+      description: Unauthorized - authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "unauthorized"
+            message: "Authentication required"
+
+    Forbidden:
+      description: Forbidden - insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "forbidden"
+            message: "Insufficient permissions"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "not_found"
+            message: "Resource not found"
+
+    Conflict:
+      description: Conflict - resource already exists or idempotency mismatch
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "conflict"
+            message: "Resource already exists"
+
+    PayloadTooLarge:
+      description: Payload too large
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "payload_too_large"
+            message: "Request payload exceeds size limit"
+
+    UnprocessableEntity:
+      description: Unprocessable entity - semantic validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "unprocessable_entity"
+            message: "Invalid business logic"
+
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds to wait before retrying
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "rate_limit_exceeded"
+            message: "Too many requests"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "internal_server_error"
+            message: "An unexpected error occurred"
+
+  schemas:
+    # Core Entities
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "user_123"
+        email:
+          type: string
+          format: email
+          example: "operator@waternity.io"
+        name:
+          type: string
+          example: "John Operator"
+        role:
+          type: object
+          properties:
+            id:
+              type: string
+              example: "role_123"
+            name:
+              type: string
+              enum: [INVESTOR, OPERATOR, AGENT, ADMIN]
+              example: "OPERATOR"
+        hederaAccountId:
+          type: string
+          nullable: true
+          example: "0.0.123456"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+
+    Well:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "well_123"
+        code:
+          type: string
+          example: "LGS-001"
+        name:
+          type: string
+          example: "Lagos Community Well"
+        location:
+          type: string
+          example: "Lagos, Nigeria"
+        topicId:
+          type: string
+          example: "0.0.789012"
+        tokenId:
+          type: string
+          nullable: true
+          example: "0.0.345678"
+        operatorUserId:
+          type: string
+          example: "user_123"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+
+    HcsEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "event_123"
+        wellId:
+          type: string
+          example: "well_123"
+        type:
+          type: string
+          enum: [METER_READING, VALVE_COMMAND, DOC_ANCHORED, SETTLEMENT_REQUESTED, SETTLEMENT_APPROVED, SETTLEMENT_EXECUTED, TOKEN_MINTED, PAYOUT_DISTRIBUTED]
+          example: "METER_READING"
+        messageId:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        consensusTime:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2024-01-15T10:30:00Z"
+        sequenceNumber:
+          type: integer
+          nullable: true
+          example: 12345
+        txId:
+          type: string
+          nullable: true
+          example: "0.0.123456@1640995200.123456789"
+        payloadJson:
+          type: object
+          example:
+            readingId: "reading_123"
+            value: 1500
+            unit: "kWh"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+
+    Settlement:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "settlement_123"
+        wellId:
+          type: string
+          example: "well_123"
+        periodStart:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        periodEnd:
+          type: string
+          format: date-time
+          example: "2024-01-31T23:59:59Z"
+        kwhTotal:
+          type: number
+          example: 15000
+        grossRevenue:
+          type: number
+          example: 750.50
+        status:
+          type: string
+          enum: [DRAFT, REQUESTED, APPROVED, EXECUTED, FAILED]
+          example: "REQUESTED"
+        requestEventId:
+          type: string
+          nullable: true
+          example: "event_123"
+        approveEventId:
+          type: string
+          nullable: true
+          example: "event_124"
+        executeEventId:
+          type: string
+          nullable: true
+          example: "event_125"
+        escrowTxId:
+          type: string
+          nullable: true
+          example: "0.0.123456@1640995200.123456789"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+
+    Payout:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "payout_123"
+        settlementId:
+          type: string
+          example: "settlement_123"
+        recipientAccount:
+          type: string
+          example: "0.0.123456"
+        assetType:
+          type: string
+          enum: [HBAR, TOKEN]
+          example: "HBAR"
+        amount:
+          type: number
+          example: 250.50
+        tokenId:
+          type: string
+          nullable: true
+          example: "0.0.345678"
+        txId:
+          type: string
+          nullable: true
+          example: "0.0.123456@1640995200.123456789"
+        status:
+          type: string
+          enum: [PENDING, COMPLETED, FAILED]
+          example: "COMPLETED"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+
+    # Request/Response Schemas
+    HcsEventRequest:
+      type: object
+      required: [messageId, wellId, topicId, eventType, payload]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        wellId:
+          type: string
+          example: "well_123"
+        topicId:
+          type: string
+          example: "0.0.789012"
+        eventType:
+          type: string
+          enum: [METER_READING, VALVE_COMMAND, DOC_ANCHORED, SETTLEMENT_REQUESTED, SETTLEMENT_APPROVED, SETTLEMENT_EXECUTED, TOKEN_MINTED, PAYOUT_DISTRIBUTED]
+          example: "METER_READING"
+        payload:
+          type: object
+          example:
+            readingId: "reading_123"
+            value: 1500
+            unit: "kWh"
+        submittedBy:
+          type: string
+          enum: [INVESTOR, OPERATOR, AGENT, SYSTEM]
+          example: "OPERATOR"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+
+    HcsEventResponse:
+      type: object
+      properties:
+        ack:
+          type: boolean
+          example: true
+        txId:
+          type: string
+          example: "0.0.123456@1640995200.123456789"
+        links:
+          type: object
+          properties:
+            hashscan:
+              type: string
+              example: "https://hashscan.io/testnet/transaction/0.0.123456@1640995200.123456789"
+            mirror:
+              type: string
+              example: "https://testnet.mirrornode.hedera.com/api/v1/transactions/0.0.123456@1640995200.123456789"
+
+    CreateWellRequest:
+      type: object
+      required: [messageId, code, name, location, topicId]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        code:
+          type: string
+          example: "LGS-001"
+        name:
+          type: string
+          example: "Lagos Community Well"
+        location:
+          type: string
+          example: "Lagos, Nigeria"
+        topicId:
+          type: string
+          example: "0.0.789012"
+
+    SettlementRequestBody:
+      type: object
+      required: [messageId, wellId, periodStart, periodEnd, kwhTotal, grossRevenue]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        wellId:
+          type: string
+          example: "well_123"
+        periodStart:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        periodEnd:
+          type: string
+          format: date-time
+          example: "2024-01-31T23:59:59Z"
+        kwhTotal:
+          type: number
+          minimum: 0
+          example: 15000
+        grossRevenue:
+          type: number
+          minimum: 0
+          example: 750.50
+
+    DocumentAnchorRequest:
+      type: object
+      required: [messageId, wellId, type, digestAlgo, digestHex]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        wellId:
+          type: string
+          example: "well_123"
+        type:
+          type: string
+          example: "compliance_report"
+        digestAlgo:
+          type: string
+          enum: [SHA-256, SHA-512]
+          example: "SHA-256"
+        digestHex:
+          type: string
+          example: "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"
+        cid:
+          type: string
+          nullable: true
+          example: "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG"
+        bundleContentBase64:
+          type: string
+          nullable: true
+          description: Base64 encoded content for large files
+
+    DocumentAnchorResponse:
+      type: object
+      properties:
+        documentId:
+          type: string
+          example: "doc_123"
+        anchorId:
+          type: string
+          example: "anchor_123"
+        txId:
+          type: string
+          example: "0.0.123456@1640995200.123456789"
+        links:
+          type: object
+          properties:
+            hashscan:
+              type: string
+              example: "https://hashscan.io/testnet/transaction/0.0.123456@1640995200.123456789"
+            hfs:
+              type: string
+              nullable: true
+              example: "https://testnet.mirrornode.hedera.com/api/v1/files/0.0.789012"
+            ipfs:
+              type: string
+              nullable: true
+              example: "https://ipfs.io/ipfs/QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG"
+
+    DashboardStats:
+      type: object
+      properties:
+        totalWells:
+          type: integer
+          example: 25
+        activeWells:
+          type: integer
+          example: 22
+        totalRevenue:
+          type: number
+          example: 15750.50
+        totalEvents:
+          type: integer
+          example: 1250
+        pendingSettlements:
+          type: integer
+          example: 3
+
+    HealthResponse:
+      type: object
+      required: [ok, hedera, db]
+      properties:
+        ok:
+          type: boolean
+          description: Overall system health status
+          example: true
+        hedera:
+          type: object
+          required: [env, network, sdkReady]
+          properties:
+            env:
+              type: boolean
+              description: Whether required Hedera environment variables are present
+              example: true
+            network:
+              type: string
+              enum: [testnet, mainnet, unknown]
+              description: Detected Hedera network
+              example: "testnet"
+            sdkReady:
+              type: boolean
+              description: Whether Hedera SDK can be initialized successfully
+              example: true
+        db:
+          type: object
+          required: [connected]
+          properties:
+            connected:
+              type: boolean
+              description: Database connectivity status
+              example: true
+        uptime:
+          type: number
+          example: 86400
+        memory:
+          type: object
+          properties:
+            used:
+              type: number
+              example: 512000000
+            total:
+              type: number
+              example: 1073741824
+            percentage:
+              type: number
+              example: 47.7
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 10
+        total:
+          type: integer
+          example: 25
+        totalPages:
+          type: integer
+          example: 3
+
+    # Error Response Schema
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: "validation_failed"
+        message:
+          type: string
+          example: "Request validation failed"
 
 tags:
   - name: Authentication
@@ -1508,9 +1349,9 @@ tags:
     description: Financial settlement operations
   - name: Documents
     description: Document anchoring and verification
-  - name: Audit
-    description: Audit reports and compliance
+  - name: Dashboard
+    description: Dashboard statistics and metrics
   - name: Metadata
-    description: System metadata and external links
+    description: External links and metadata
   - name: System
-    description: System health and monitoring
+    description: System health and documentation

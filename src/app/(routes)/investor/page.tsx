@@ -101,18 +101,7 @@ function formatPercentage(value: number): string {
   return `${value.toFixed(1)}%`
 }
 
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'ACTIVE':
-      return 'status-active'
-    case 'EXECUTED':
-      return 'status-executed'
-    case 'PENDING':
-      return 'status-pending'
-    default:
-      return 'status-inactive'
-  }
-}
+import { getStatusColor } from '@/lib/ui'
 
 export default function InvestorPage() {
   const profitLoss = mockInvestorData.currentValue - mockInvestorData.totalInvestment

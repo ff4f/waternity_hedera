@@ -1,77 +1,81 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "hcs_event.schema.json",
+  "$id": "https://waternity.com/schemas/hcs_event.schema.json",
   "title": "HCS Event Schema",
-  "description": "Schema for HCS events with type discriminator",
+  "description": "Schema for Hedera Consensus Service events with discriminator",
   "allOf": [
     {
-      "$ref": "hcs.common.schema.json"
+      "$ref": "./common.hcs.schema.json"
     },
     {
-      "if": {
-        "properties": {
-          "type": {"const": "METER_READING"}
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "type": "string",
+          "enum": [
+            "meter_reading",
+            "valve_command",
+            "settlement_request",
+            "settlement_approve",
+            "settlement_execute",
+            "anchor_document"
+          ],
+          "description": "Type of the event for discriminator"
+        },
+        "data": {
+          "type": "object",
+          "description": "Event-specific data payload"
         }
       },
-      "then": {
-        "properties": {
-          "payload": {
-            "type": "object",
-            "properties": {
-              "reading": {
-                "type": "number",
-                "minimum": 0,
-                "description": "Meter reading value"
-              },
-              "unit": {
-                "type": "string",
-                "enum": ["kWh", "liters", "cubic_meters"],
-                "description": "Unit of measurement"
-              },
-              "timestamp": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Reading timestamp"
-              }
-            },
-            "required": ["reading", "unit", "timestamp"],
-            "additionalProperties": false
-          }
-        }
+      "required": ["eventType", "data"]
+    }
+  ],
+  "discriminator": {
+    "propertyName": "eventType",
+    "mapping": {
+      "meter_reading": "./meter_reading.schema.json",
+      "valve_command": "./valve_command.schema.json",
+      "settlement_request": "./settlement_request.schema.json",
+      "settlement_approve": "./settlement_approve.schema.json",
+      "settlement_execute": "./settlement_execute.schema.json",
+      "anchor_document": "./anchor_document.schema.json"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "eventType": { "const": "meter_reading" },
+        "data": { "$ref": "./meter_reading.schema.json#/properties/data" }
       }
     },
     {
-      "if": {
-        "properties": {
-          "type": {"const": "VALVE_COMMAND"}
-        }
-      },
-      "then": {
-        "properties": {
-          "payload": {
-            "type": "object",
-            "properties": {
-              "action": {
-                "type": "string",
-                "enum": ["OPEN", "CLOSE", "ADJUST"],
-                "description": "Valve action"
-              },
-              "position": {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 100,
-                "description": "Valve position percentage (0-100)"
-              },
-              "timestamp": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Command timestamp"
-              }
-            },
-            "required": ["action", "timestamp"],
-            "additionalProperties": false
-          }
-        }
+      "properties": {
+        "eventType": { "const": "valve_command" },
+        "data": { "$ref": "./valve_command.schema.json#/properties/data" }
+      }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "settlement_request" },
+        "data": { "$ref": "./settlement_request.schema.json#/properties/data" }
+      }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "settlement_approve" },
+        "data": { "$ref": "./settlement_approve.schema.json#/properties/data" }
+      }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "settlement_execute" },
+        "data": { "$ref": "./settlement_execute.schema.json#/properties/data" }
+      }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "anchor_document" },
+        "data": { "$ref": "./anchor_document.schema.json#/properties/data" }
       }
     }
   ]

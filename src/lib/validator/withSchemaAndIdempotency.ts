@@ -1,31 +1,97 @@
 import { NextRequest } from 'next/server';
 import { JSONSchemaType } from 'ajv';
-import { withSchema } from './withSchema';
-import { 
-  idempotencyStore, 
-  getIdempotencyKey, 
-  getIdempotencyScope, 
-  createResultHash 
-} from '../idempotency/store';
+import { ensureIdempotent } from '../idempotency/store';
+import { sha256Hex } from '../hash';
+import ajv, { ValidateFunction } from './ajv';
+
+// Maximum payload size: 2MB
+const MAX_PAYLOAD_SIZE = 2 * 1024 * 1024; // 2MB in bytes
+
+function safeStringify(value: unknown): string {
+  return JSON.stringify(value, (key, val) => (typeof val === 'bigint' ? val.toString() : val as unknown));
+}
 
 /**
  * Higher-order function that combines schema validation and idempotency
  * Ensures that mutating operations are idempotent and validated
+ * Rejects payloads > 2MB with 413 status
  */
 export function withSchemaAndIdempotency<T>(
   schema: JSONSchemaType<T> | object,
-  handler: (req: NextRequest, res: any, body: T) => Promise<Response>
+  handler: (req: NextRequest, res: unknown, body: T) => Promise<Response>
 ) {
-  return withSchema(schema, async (req: NextRequest, res: any, body: T): Promise<Response> => {
+  // Compile schema if it's not already a validation function
+  const validate: ValidateFunction = typeof schema === 'function' 
+    ? (schema as ValidateFunction)
+    : ajv.compile(schema as object);
+
+  return async (req: Request): Promise<Response> => {
     try {
-      // Extract idempotency key
+      // Check Content-Length header first for efficiency
+      const contentLength = req.headers.get('content-length');
+      if (contentLength && parseInt(contentLength, 10) > MAX_PAYLOAD_SIZE) {
+        return new Response(
+          JSON.stringify({
+            error: 'payload_too_large',
+            message: 'Request payload exceeds maximum size of 2MB',
+            details: [`Payload size: ${contentLength} bytes, Maximum allowed: ${MAX_PAYLOAD_SIZE} bytes`]
+          }),
+          { status: 413, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Parse request body and check actual size
+      const bodyText = await req.text();
+      const bodySize = new TextEncoder().encode(bodyText).length;
+      
+      if (bodySize > MAX_PAYLOAD_SIZE) {
+        return new Response(
+          JSON.stringify({
+            error: 'payload_too_large',
+            message: 'Request payload exceeds maximum size of 2MB',
+            details: [`Payload size: ${bodySize} bytes, Maximum allowed: ${MAX_PAYLOAD_SIZE} bytes`]
+          }),
+          { status: 413, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Parse JSON
+      let body: T;
+      try {
+        body = JSON.parse(bodyText) as T;
+      } catch (error) {
+        return new Response(
+          JSON.stringify({
+            error: 'invalid_json',
+            message: 'Invalid JSON in request body',
+            details: [(error as Error).message]
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Validate against schema
+      const isValid = validate(body);
+      if (!isValid) {
+        return new Response(
+          JSON.stringify({
+            error: 'validation_failed',
+            message: 'Request body validation failed',
+            details: validate.errors || []
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Extract idempotency key from header or body
       const headers = Object.fromEntries(req.headers.entries());
-      const idempotencyKey = getIdempotencyKey(headers, body);
+      const idempotencyKey = (headers as Record<string, string>)['idempotency-key'] || (body as unknown as { messageId?: string })?.messageId;
       
       if (!idempotencyKey) {
         return new Response(
           JSON.stringify({ 
-            error: 'missing_idempotency_key', 
+            error: 'missing_idempotency_key',
+            message: 'Idempotency key is required',
             details: ['Idempotency-Key header or messageId in body is required'] 
           }),
           { status: 400, headers: { 'Content-Type': 'application/json' } }
@@ -34,99 +100,81 @@ export function withSchemaAndIdempotency<T>(
 
       // Get scope from pathname
       const url = new URL(req.url);
-      const scope = getIdempotencyScope(url.pathname);
+      const scope = url.pathname.replace(/^\//g, '').replace(/\//g, '_');
 
-      // Check if operation already exists
-      const existing = await idempotencyStore.get(idempotencyKey, scope);
-      
-      if (existing) {
-        if (existing.status === 'PENDING') {
-          // Operation is still in progress
-          return new Response(
-            JSON.stringify({ 
-              error: 'operation_in_progress', 
-              details: ['Operation with this idempotency key is still in progress'] 
-            }),
-            { status: 409, headers: { 'Content-Type': 'application/json' } }
-          );
-        } else if (existing.status === 'SUCCEEDED') {
-          // Check if the request body is the same by comparing hashes
-          const currentBodyHash = createResultHash(body);
-          if (existing.requestHash && existing.requestHash !== currentBodyHash) {
-            // Different payload with same idempotency key
-            return new Response(
-              JSON.stringify({ 
-                error: 'idempotency_key_conflict', 
-                details: ['Different payload provided for existing idempotency key'] 
-              }),
-              { status: 409, headers: { 'Content-Type': 'application/json' } }
-            );
+      // Compute payload hash from validated body
+      const payloadHash = sha256Hex(safeStringify(body));
+
+      // Use ensureIdempotent to handle the operation
+      const result = await ensureIdempotent(
+        idempotencyKey,
+        scope,
+        payloadHash,
+        async () => {
+          // Execute the handler
+          const response = await handler(req as unknown as NextRequest, null, body);
+          
+          // Extract the response data
+          const responseText = await response.text();
+          let responseData: unknown;
+          try {
+            responseData = JSON.parse(responseText);
+          } catch {
+            responseData = responseText;
           }
           
-          // Return the cached response if available
-          if (existing.result) {
-            return new Response(existing.result, {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' }
-            });
-          }
-          
-          // Fallback if no response data stored
-          return new Response(
-            JSON.stringify({ 
-              message: 'Operation already completed successfully',
-              idempotencyKey 
-            }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } }
-          );
-        } else if (existing.status === 'FAILED') {
-          // Previous operation failed, delete and recreate as pending
-          await idempotencyStore.set(idempotencyKey, scope, 'PENDING');
+          return {
+            status: response.status,
+            headers: Object.fromEntries(response.headers.entries()),
+            data: responseData
+          } as { status: number; headers: Record<string, string>; data: unknown };
         }
-      } else {
-        // Create new pending operation with request hash
-        const requestHash = createResultHash(body);
-        await idempotencyStore.set(idempotencyKey, scope, 'PENDING', requestHash);
+      );
+
+      if (result.reused) {
+        // Return cached result with reused indicator
+        const cachedResponse = result.result as { status: number; headers: Record<string, string>; data: unknown };
+        const responseData = typeof cachedResponse.data === 'object' && cachedResponse.data !== null
+          ? { ...cachedResponse.data as object, reused: true }
+          : { data: cachedResponse.data, reused: true };
+          
+        return new Response(
+          JSON.stringify(responseData),
+          { 
+            status: cachedResponse.status,
+            headers: { ...cachedResponse.headers, 'X-Idempotency-Reused': 'true' }
+          }
+        );
       }
 
-      try {
-        // Execute the actual operation
-        const result = await handler(req, res, body);
-        
-        // If successful, update idempotency record
-        if (result.status >= 200 && result.status < 300) {
-          const resultText = await result.text();
-          const resultHash = createResultHash(JSON.parse(resultText || '{}'));
-          const requestHash = createResultHash(body);
-          await idempotencyStore.update(idempotencyKey, scope, 'SUCCEEDED', requestHash, resultHash, resultText);
-          
-          // Return the result with the same content
-          return new Response(resultText, {
-            status: result.status,
-            headers: result.headers
-          });
-        } else {
-          // Operation failed
-          const requestHash = createResultHash(body);
-          await idempotencyStore.update(idempotencyKey, scope, 'FAILED', requestHash);
-          return result;
-        }
-      } catch (operationError) {
-        // Mark operation as failed
-        await idempotencyStore.update(idempotencyKey, scope, 'FAILED');
-        throw operationError;
-      }
-    } catch (error) {
-      console.error('withSchemaAndIdempotency error:', error);
-      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      // Return new result
+      const newResponse = result.result as { status: number; headers: Record<string, string>; data: unknown };
       return new Response(
-        JSON.stringify({ 
-          error: 'internal_server_error', 
-          details: ['An unexpected error occurred'],
-          debug: error instanceof Error ? error.message : String(error)
-        }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        JSON.stringify(newResponse.data),
+        { 
+          status: newResponse.status,
+          headers: { ...newResponse.headers, 'X-Idempotency-Reused': 'false' }
+        }
+      );
+      
+    } catch (error) {
+      console.error('Schema and idempotency wrapper error:', error);
+      const status = (error as { status?: number })?.status === 409 ? 409 : 500;
+      const payload = (error as { status?: number })?.status === 409
+        ? { 
+            error: 'idempotency_conflict', 
+            message: 'Idempotency key conflict',
+            details: ['Same idempotency key used with different payload'] 
+          }
+        : { 
+            error: 'internal_server_error', 
+            message: 'An unexpected error occurred',
+            details: [(error as Error).message] 
+          };
+      return new Response(
+        JSON.stringify(payload),
+        { status, headers: { 'Content-Type': 'application/json' } }
       );
     }
-  });
+  };
 }

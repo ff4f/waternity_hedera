@@ -1,160 +1,244 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { AuthUser, Role } from '../types';
-import { getSessionFromCookie, getSessionFromRequest, createUnauthorizedResponse, createForbiddenResponse } from './session';
+import { getUserFromRequest, getUserFromHeaders, getUserFromStandardRequest } from './session';
 
-export function hasRole(user: AuthUser | null, requiredRole: Role): boolean {
-  if (!user) return false;
-  
-  // Admin has access to everything
-  if (user.role === Role.ADMIN) return true;
-  
-  return user.role === requiredRole;
+export type Role = 'ADMIN' | 'OPERATOR' | 'AGENT' | 'INVESTOR';
+
+export interface AuthenticatedUser {
+  id: string;
+  email: string;
+  name: string | null;
+  hashedPassword: string;
+  salt: string;
+  resetToken: string | null;
+  resetTokenExpiresAt: Date | null;
+  hederaAccountId: string | null;
+  walletEvm: string | null;
+  roleId: string;
+  createdAt: Date;
+  role: {
+    id: string;
+    name: string;
+    users: any[];
+  };
+  wells: any[];
+  memberships: any[];
 }
 
-export function hasAnyRole(user: AuthUser | null, requiredRoles: Role[]): boolean {
-  if (!user) return false;
-  
-  // Admin has access to everything
-  if (user.role === Role.ADMIN) return true;
-  
-  return requiredRoles.includes(user.role);
+export class AuthenticationError extends Error {
+  constructor(message: string = 'Authentication required') {
+    super(message);
+    this.name = 'AuthenticationError';
+  }
 }
 
-export function assertRole(user: AuthUser | null, requiredRole: Role): void {
+export class AuthorizationError extends Error {
+  constructor(message: string = 'Insufficient permissions') {
+    super(message);
+    this.name = 'AuthorizationError';
+  }
+}
+
+/**
+ * Requires a user to be authenticated via the existing custom cookie session.
+ * Throws 401 if missing.
+ * 
+ * @param req - The Request object (NextRequest or standard Request)
+ * @returns Promise<AuthenticatedUser> - The authenticated user with role information
+ * @throws AuthenticationError if user is not authenticated
+ */
+export async function requireUser(req: Request): Promise<AuthenticatedUser> {
+  let user: any = null;
+
+  // Handle both NextRequest and standard Request
+  if (req instanceof NextRequest) {
+    user = await getUserFromRequest(req);
+  } else {
+    // For standard Request (like in API routes), we need to parse cookies from headers
+    user = await getUserFromStandardRequest(req);
+  }
+
   if (!user) {
-    throw new Error('User not authenticated');
+    throw new AuthenticationError('Valid authentication required');
   }
-  
-  if (!hasRole(user, requiredRole)) {
-    throw new Error(`Insufficient permissions. Required role: ${requiredRole}`);
-  }
+
+  return user as AuthenticatedUser;
 }
 
-export function assertAnyRole(user: AuthUser | null, requiredRoles: Role[]): void {
-  if (!user) {
-    throw new Error('User not authenticated');
-  }
-  
-  if (!hasAnyRole(user, requiredRoles)) {
-    throw new Error(`Insufficient permissions. Required roles: ${requiredRoles.join(', ')}`);
-  }
-}
-
-export function requireUser(user: AuthUser | null): AuthUser {
-  if (!user) {
-    throw new Error('User not authenticated');
-  }
-  return user;
-}
-
-// Server-side guards for API routes
-export async function requireRoleFromCookie(requiredRole: Role): Promise<AuthUser> {
-  const user = await getSessionFromCookie();
-  
-  if (!user) {
-    throw new Error('UNAUTHORIZED');
-  }
-  
-  if (!hasRole(user, requiredRole)) {
-    throw new Error(`FORBIDDEN:${requiredRole}`);
-  }
-  
-  return user;
-}
-
-export async function requireAnyRoleFromCookie(requiredRoles: Role[]): Promise<AuthUser> {
-  const user = await getSessionFromCookie();
-  
-  if (!user) {
-    throw new Error('UNAUTHORIZED');
-  }
-  
-  if (!hasAnyRole(user, requiredRoles)) {
-    throw new Error(`FORBIDDEN:${requiredRoles.join(',')}`);
-  }
-  
-  return user;
-}
-
-export async function requireRoleFromRequest(request: NextRequest, requiredRole: Role): Promise<AuthUser> {
-  const user = await getSessionFromRequest(request);
+/**
+ * Requires a user to be authenticated from headers (for API routes)
+ * Throws AuthenticationError if no valid user session
+ */
+export async function requireUserFromHeaders(): Promise<AuthenticatedUser> {
+  const user = await getUserFromHeaders();
   
   if (!user) {
-    throw new Error('UNAUTHORIZED');
+    throw new AuthenticationError('Valid authentication required');
   }
   
-  if (!hasRole(user, requiredRole)) {
-    throw new Error(`FORBIDDEN:${requiredRole}`);
-  }
-  
-  return user;
+  return user as AuthenticatedUser;
 }
 
-// Middleware helpers
-export function createRoleGuard(requiredRole: Role) {
-  return async (request: NextRequest): Promise<NextResponse | null> => {
+/**
+ * Asserts that the authenticated user has one of the allowed roles.
+ * Throws 403 if user doesn't have any of the allowed roles.
+ * 
+ * @param user - The user object with role information
+ * @param roles - Array of allowed roles
+ * @throws AuthorizationError if user doesn't have any of the allowed roles
+ */
+export function assertRole(user: AuthenticatedUser, ...roles: Role[]): void {
+  const userRole = user.role.name as Role;
+  
+  if (!roles.includes(userRole)) {
+    throw new AuthorizationError(
+      `One of roles [${roles.join(', ')}] required, but user has role ${userRole}`
+    );
+  }
+}
+
+/**
+ * Asserts that the authenticated user has one of the required roles
+ * Throws AuthorizationError if user doesn't have any of the required roles
+ */
+export function assertAnyRole(user: AuthenticatedUser, requiredRoles: Role[]): void {
+  const userRole = user.role.name as Role;
+  
+  if (!requiredRoles.includes(userRole)) {
+    throw new AuthorizationError(
+      `One of roles [${requiredRoles.join(', ')}] required, but user has role ${userRole}`
+    );
+  }
+}
+
+/**
+ * Checks if user has the specified role
+ */
+export function hasRole(user: AuthenticatedUser, role: Role): boolean {
+  return user.role.name === role;
+}
+
+/**
+ * Checks if user has any of the specified roles
+ */
+export function hasAnyRole(user: AuthenticatedUser, roles: Role[]): boolean {
+  const userRole = user.role.name as Role;
+  return roles.includes(userRole);
+}
+
+/**
+ * Checks if user is an admin
+ */
+export function isAdmin(user: AuthenticatedUser): boolean {
+  return hasRole(user, 'ADMIN');
+}
+
+/**
+ * Checks if user is an operator
+ */
+export function isOperator(user: AuthenticatedUser): boolean {
+  return hasRole(user, 'OPERATOR');
+}
+
+/**
+ * Checks if user is an investor
+ */
+export function isInvestor(user: AuthenticatedUser): boolean {
+  return hasRole(user, 'INVESTOR');
+}
+
+/**
+ * Checks if user is an agent
+ */
+export function isAgent(user: AuthenticatedUser): boolean {
+  return hasRole(user, 'AGENT');
+}
+
+/**
+ * Creates a standardized unauthorized response
+ */
+export function createUnauthorizedResponse(): NextResponse {
+  return NextResponse.json(
+    { error: 'unauthorized' },
+    { status: 401 }
+  );
+}
+
+/**
+ * Creates a standardized forbidden response
+ */
+export function createForbiddenResponse(): NextResponse {
+  return NextResponse.json(
+    { error: 'forbidden' },
+    { status: 403 }
+  );
+}
+
+/**
+ * Higher-order function to protect API routes with authentication
+ */
+export function withAuth<T extends any[]>(
+  handler: (user: AuthenticatedUser, ...args: T) => Promise<NextResponse>
+) {
+  return async (request: NextRequest, ...args: T): Promise<NextResponse> => {
     try {
-      await requireRoleFromRequest(request, requiredRole);
-      return null; // Continue to next middleware/handler
+      const user = await requireUser(request);
+      return await handler(user, ...args);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      if (errorMessage === 'UNAUTHORIZED') {
+      if (error instanceof AuthenticationError) {
         return createUnauthorizedResponse();
       }
-      
-      if (errorMessage.startsWith('FORBIDDEN:')) {
-        const needRole = errorMessage.split(':')[1] as Role;
-        return createForbiddenResponse(needRole);
+      if (error instanceof AuthorizationError) {
+        return createForbiddenResponse();
       }
-      
-      return createUnauthorizedResponse();
+      throw error;
     }
   };
 }
 
-export function createAnyRoleGuard(requiredRoles: Role[]) {
-  return async (request: NextRequest): Promise<NextResponse | null> => {
+/**
+ * Higher-order function to protect API routes with role-based authorization
+ */
+export function withRole<T extends any[]>(
+  requiredRole: Role,
+  handler: (user: AuthenticatedUser, ...args: T) => Promise<NextResponse>
+) {
+  return async (request: NextRequest, ...args: T): Promise<NextResponse> => {
     try {
-      await requireAnyRoleFromRequest(request, requiredRoles);
-      return null; // Continue to next middleware/handler
+      const user = await requireUser(request);
+      assertRole(user, requiredRole);
+      return await handler(user, ...args);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      if (errorMessage === 'UNAUTHORIZED') {
+      if (error instanceof AuthenticationError) {
         return createUnauthorizedResponse();
       }
-      
-      if (errorMessage.startsWith('FORBIDDEN:')) {
-        const needRoles = errorMessage.split(':')[1].split(',') as Role[];
-        return createForbiddenResponse(needRoles[0]); // Return first required role
+      if (error instanceof AuthorizationError) {
+        return createForbiddenResponse();
       }
-      
-      return createUnauthorizedResponse();
+      throw error;
     }
   };
 }
 
-async function requireAnyRoleFromRequest(request: NextRequest, requiredRoles: Role[]): Promise<AuthUser> {
-  const user = await getSessionFromRequest(request);
-  
-  if (!user) {
-    throw new Error('UNAUTHORIZED');
-  }
-  
-  if (!hasAnyRole(user, requiredRoles)) {
-    throw new Error(`FORBIDDEN:${requiredRoles.join(',')}`);
-  }
-  
-  return user;
+/**
+ * Higher-order function to protect API routes with multiple role options
+ */
+export function withAnyRole<T extends any[]>(
+  requiredRoles: Role[],
+  handler: (user: AuthenticatedUser, ...args: T) => Promise<NextResponse>
+) {
+  return async (request: NextRequest, ...args: T): Promise<NextResponse> => {
+    try {
+      const user = await requireUser(request);
+      assertAnyRole(user, requiredRoles);
+      return await handler(user, ...args);
+    } catch (error) {
+      if (error instanceof AuthenticationError) {
+        return createUnauthorizedResponse();
+      }
+      if (error instanceof AuthorizationError) {
+        return createForbiddenResponse();
+      }
+      throw error;
+    }
+  };
 }
-
-// Role-specific guards for different endpoints
-export const requireInvestor = createRoleGuard(Role.INVESTOR);
-export const requireOperator = createRoleGuard(Role.OPERATOR);
-export const requireAgent = createRoleGuard(Role.AGENT);
-export const requireAdmin = createRoleGuard(Role.ADMIN);
-
-// Combined role guards
-export const requireOperatorOrAdmin = createAnyRoleGuard([Role.OPERATOR, Role.ADMIN]);
-export const requireAgentOrAdmin = createAnyRoleGuard([Role.AGENT, Role.ADMIN]);

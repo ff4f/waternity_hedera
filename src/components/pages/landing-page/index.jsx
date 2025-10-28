@@ -145,29 +145,69 @@ const LandingPage = () => {
       if (typeof window === 'undefined') return;
       
       try {
+        // Prevent property descriptor conflicts by checking for existing HashConnect instances
+        if (window.hashconnect) {
+          console.warn('HashConnect already initialized, skipping...');
+          return;
+        }
+
         const { HashConnect } = await import('hashconnect');
         const h = new HashConnect(LedgerId.TESTNET, projectId, appMetadata, true);
         
-        // v3: register events before init
-        h.pairingEvent.on((pair) => {
-          const acc = pair?.accountIds?.[0];
-          setWallet({ connected: true, accountId: acc || "", state: "Connected" });
-        });
-        h.disconnectionEvent?.on?.(() => {
-          setWallet({ connected: false, accountId: "", state: "Disconnected" });
-        });
-        h.connectionStatusChangeEvent?.on?.((st) => {
-          setWallet((prev) => ({ ...prev, state: String(st) }));
-        });
+        // v3: register events before init with error handling
+        try {
+          h.pairingEvent.on((pair) => {
+            try {
+              const acc = pair?.accountIds?.[0];
+              setWallet({ connected: true, accountId: acc || "", state: "Connected" });
+            } catch (err) {
+              console.error('Error in pairing event:', err);
+            }
+          });
+        } catch (err) {
+          console.error('Error setting up pairing event:', err);
+        }
+
+        try {
+          h.disconnectionEvent?.on?.(() => {
+            try {
+              setWallet({ connected: false, accountId: "", state: "Disconnected" });
+            } catch (err) {
+              console.error('Error in disconnection event:', err);
+            }
+          });
+        } catch (err) {
+          console.error('Error setting up disconnection event:', err);
+        }
+
+        try {
+          h.connectionStatusChangeEvent?.on?.((st) => {
+            try {
+              setWallet((prev) => ({ ...prev, state: String(st) }));
+            } catch (err) {
+              console.error('Error in connection status change event:', err);
+            }
+          });
+        } catch (err) {
+          console.error('Error setting up connection status change event:', err);
+        }
 
         await h.init();
         setHc(h);
         
+        // Store reference to prevent re-initialization
+        window.hashconnect = h;
+        
         return () => {
-          try { h?.disconnect?.(); } catch {}
+          try { 
+            h?.disconnect?.(); 
+            delete window.hashconnect;
+          } catch {}
         };
       } catch (e) {
-        console.error(e);
+        console.error('HashConnect initialization error:', e);
+        // Set wallet to disconnected state on error
+        setWallet({ connected: false, accountId: "", state: "Error" });
       }
     };
     

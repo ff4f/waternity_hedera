@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Client, TopicCreateTransaction, TopicMessageSubmitTransaction, TopicMessageQuery, PrivateKey } from '@hashgraph/sdk';
 import { prisma } from '@/lib/prisma';
-// import { submitHCSEvent } from '@/lib/hedera/hcs'; // Function not exported
 import { getHederaNetworkEndpoints } from '@/lib/env';
 import { getOperator } from '@/lib/hedera/client';
 import { v4 as uuidv4 } from 'uuid';
@@ -20,7 +19,7 @@ describe('HCS Integration Tests', () => {
   let testTopicId: string;
   let operatorAccountId: string;
   let operatorPrivateKey: PrivateKey;
-  let testResults: Array<{
+  const testResults: Array<{
     testName: string;
     transactionId?: string;
     consensusTimestamp?: string;

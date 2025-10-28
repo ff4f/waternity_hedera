@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for idempotency"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "description": "User full name"
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "description": "User email address"
+    },
+    "password": {
+      "type": "string",
+      "minLength": 6,
+      "description": "User password"
+    },
+    "roleId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Role identifier"
+    },
+    "walletEvm": {
+      "type": "string",
+      "description": "EVM wallet address (optional)"
+    },
+    "hederaAccountId": {
+      "type": "string",
+      "pattern": "^0\\.0\\.[0-9]+$",
+      "description": "Hedera account ID (optional)"
+    }
+  },
+  "required": ["messageId", "name", "email", "password"],
+  "additionalProperties": false
+}

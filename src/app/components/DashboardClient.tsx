@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 
+import { getStatusColor } from '@/lib/ui'
+
 interface DashboardStats {
   totalWells: number
   activeWells: number
@@ -50,19 +52,6 @@ function formatDate(date: string): string {
     hour: '2-digit',
     minute: '2-digit'
   }).format(new Date(date))
-}
-
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'ACTIVE':
-      return 'status-active'
-    case 'INACTIVE':
-      return 'status-inactive'
-    case 'MAINTENANCE':
-      return 'status-maintenance'
-    default:
-      return 'status-unknown'
-  }
 }
 
 function getEventTypeColor(type: string): string {
@@ -254,9 +243,9 @@ export default function DashboardClient() {
                         </div>
                       </div>
                       <div className="mt-2 flex items-center space-x-4 text-xs text-gray-500">
-                        <span>{well._count.events} events</span>
-                        <span>{well._count.settlements} settlements</span>
-                        <span>Operator: {well.operator.name}</span>
+                        <span>{well._count?.events ?? 0} events</span>
+                        <span>{well._count?.settlements ?? 0} settlements</span>
+                        <span>Operator: {well.operator?.name ?? 'N/A'}</span>
                       </div>
                     </div>
                     <div className="flex-shrink-0">

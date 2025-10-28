@@ -3,8 +3,13 @@ import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
 import ProofPillComponent from '../../../components/ui/ProofPillComponent';
+import { useWalletContext, useWalletConnection, useWalletBalance } from '../../../../lib/wallet-context';
 
 const WellInvestmentPanel = ({ wellData, userRole = 'investor' }) => {
+  // Wallet integration
+  const { isConnected, accountId, connect, disconnect, loading, error: walletError } = useWalletConnection();
+  const { balance, tokens } = useWalletBalance();
+  
   const [investmentAmount, setInvestmentAmount] = useState(1000);
   const [isInvesting, setIsInvesting] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
@@ -47,15 +52,42 @@ const WellInvestmentPanel = ({ wellData, userRole = 'investor' }) => {
   };
 
   const handleInvest = async () => {
+    if (!isConnected) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
     setIsInvesting(true);
-    setShowWalletModal(true);
-    
-    // Simulate wallet confirmation and blockchain transaction
-    setTimeout(() => {
+    try {
+      // Call backend API to prepare investment
+      const response = await fetch(`/api/wells/${wellData.id}/invest`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          amount: investmentAmount,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to prepare investment');
+      }
+
+      const result = await response.json();
+
+      // For now, we'll show success since the backend handles the investment
+      // In a full implementation, you'd integrate with HashConnect for wallet signing
+      alert('Investment prepared successfully! Please sign the transaction in your wallet.');
+      
+      // Refresh the page or update state
+      window.location.reload();
+    } catch (error) {
+      console.error('Investment failed:', error);
+      alert(`Investment failed: ${error.message}`);
+    } finally {
       setIsInvesting(false);
-      setShowWalletModal(false);
-      // Could trigger success notification here
-    }, 3000);
+    }
   };
 
   const getRoleSpecificContent = () => {
@@ -102,7 +134,55 @@ const WellInvestmentPanel = ({ wellData, userRole = 'investor' }) => {
       default: // investor
         return (
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-foreground">Investment Details</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-foreground">Investment Details</h3>
+              {isConnected && balance && (
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Wallet Balance</p>
+                  <p className="text-sm font-medium text-foreground">{balance.hbar} HBAR</p>
+                </div>
+              )}
+            </div>
+            
+            {/* Wallet Connection Status */}
+            {!isConnected && (
+              <div className="bg-muted/30 rounded-lg p-4 text-center space-y-3">
+                <Icon name="Wallet" size={24} className="text-muted-foreground mx-auto" />
+                <div>
+                  <p className="text-sm font-medium text-foreground mb-1">Connect Your Wallet</p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Connect your Hedera wallet to start investing
+                  </p>
+                  <Button
+                    onClick={connect}
+                    loading={loading}
+                    variant="default"
+                    iconName="Wallet"
+                    iconPosition="left"
+                  >
+                    {loading ? 'Connecting...' : 'Connect Wallet'}
+                  </Button>
+                </div>
+              </div>
+            )}
+            
+            {walletError && (
+              <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+                <p className="text-sm text-destructive">{walletError}</p>
+              </div>
+            )}
+            
+            {isConnected && accountId && (
+              <div className="bg-success/10 border border-success/20 rounded-lg p-3">
+                <div className="flex items-center space-x-2">
+                  <Icon name="CheckCircle" size={16} className="text-success" />
+                  <div>
+                    <p className="text-sm font-medium text-success">Wallet Connected</p>
+                    <p className="text-xs text-muted-foreground">{accountId}</p>
+                  </div>
+                </div>
+              </div>
+            )}
             {/* Investment Amount Slider */}
             <div className="space-y-3">
               <label className="text-sm font-medium text-foreground">Investment Amount (USDC)</label>
@@ -152,13 +232,25 @@ const WellInvestmentPanel = ({ wellData, userRole = 'investor' }) => {
             <Button
               variant="default"
               fullWidth
-              loading={isInvesting}
+              loading={isInvesting || isConnecting}
               onClick={handleInvest}
               iconName="DollarSign"
               iconPosition="left"
-              disabled={investmentAmount < minInvestment || investmentAmount > remainingFunding}
+              disabled={
+                !isConnected || 
+                investmentAmount < minInvestment || 
+                investmentAmount > remainingFunding ||
+                loading
+              }
             >
-              {isInvesting ? 'Processing Investment...' : `Invest $${investmentAmount} USDC`}
+              {loading 
+                ? 'Connecting Wallet...' 
+                : isInvesting 
+                  ? 'Processing Investment...' 
+                  : !isConnected 
+                    ? 'Connect Wallet to Invest'
+                    : `Invest $${investmentAmount.toLocaleString()}`
+              }
             </Button>
             <div className="text-xs text-muted-foreground text-center">
               Minimum: ${minInvestment} • Remaining: ${remainingFunding?.toLocaleString()}
@@ -220,8 +312,15 @@ const WellInvestmentPanel = ({ wellData, userRole = 'investor' }) => {
               </div>
               <h3 className="text-lg font-semibold text-foreground">Confirm Investment</h3>
               <p className="text-muted-foreground">
-                Please confirm the investment of ${investmentAmount} USDC in your connected wallet.
+                Please confirm the investment of ${investmentAmount} USDC from your connected wallet.
               </p>
+              
+              {isConnected && accountId && (
+                <p className="text-sm text-gray-600 mb-2">
+                  <strong>From Account:</strong> {accountId}
+                </p>
+              )}
+              
               <div className="bg-muted/30 rounded-lg p-4">
                 <div className="flex justify-between text-sm mb-2">
                   <span>Investment Amount:</span>
@@ -229,11 +328,15 @@ const WellInvestmentPanel = ({ wellData, userRole = 'investor' }) => {
                 </div>
                 <div className="flex justify-between text-sm mb-2">
                   <span>Network Fee:</span>
-                  <span className="font-medium">~$0.0001</span>
+                  <span className="font-medium">~0.0001 HBAR</span>
+                </div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span>Well:</span>
+                  <span className="font-medium">{wellData?.name || 'Water Well'}</span>
                 </div>
                 <div className="flex justify-between text-sm font-semibold border-t border-border pt-2">
-                  <span>Total:</span>
-                  <span>${(investmentAmount + 0.0001)?.toFixed(4)} USDC</span>
+                  <span>Expected APY:</span>
+                  <span className="text-primary">{projectedAPY?.toFixed(2)}%</span>
                 </div>
               </div>
               <div className="flex items-center justify-center space-x-2">

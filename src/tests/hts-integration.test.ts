@@ -5,7 +5,6 @@ import {
   TokenMintTransaction,
   TokenAssociateTransaction,
   TransferTransaction,
-  AccountBalanceQuery,
   TokenInfoQuery,
   PrivateKey,
   AccountId,
@@ -32,14 +31,14 @@ describe('HTS Integration Tests', () => {
   let operatorPrivateKey: PrivateKey;
   let testTokenId: TokenId;
   let nftTokenId: TokenId;
-  let testResults: Array<{
+  const testResults: Array<{
     testName: string;
     transactionId?: string;
     tokenId?: string;
     status: 'PASS' | 'FAIL';
     error?: string;
     duration: number;
-    metrics?: Record<string, any>;
+    metrics?: Record<string, Record<string, unknown>>;
   }> = [];
 
   beforeAll(async () => {

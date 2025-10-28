@@ -9,6 +9,8 @@ import LandingPage from './components/pages/landing-page';
 import InvestorDashboard from './components/pages/investor-dashboard';
 import WellDetailView from './components/pages/well-detail-view';
 import AuditPage from './components/pages/audit';
+import DemoPage from './pages/demo';
+import ApiDocsPage from './pages/api-docs';
 
 const Routes = () => {
   const [isClient, setIsClient] = useState(false);
@@ -34,6 +36,8 @@ const Routes = () => {
         <Route path="/investor-dashboard" element={<InvestorDashboard />} />
         <Route path="/well-detail-view" element={<WellDetailView />} />
         <Route path="/audit" element={<AuditPage />} />
+        <Route path="/demo" element={<DemoPage />} />
+        <Route path="/api/docs" element={<ApiDocsPage />} />
         <Route path="*" element={<NotFound />} />
       </RouterRoutes>
       </ErrorBoundary>

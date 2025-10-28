@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RefreshCw, Droplet, Activity, DollarSign, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import SettlementStatusIndicator from '@/components/SettlementStatusIndicator';
 
 interface Well {
   id: string;
@@ -405,9 +406,7 @@ const RealTimeMonitoringDashboard: React.FC = () => {
                           <div className="flex items-center gap-2">
                             <h3 className="font-semibold">{settlement.well.name}</h3>
                             <Badge variant="outline">{settlement.well.code}</Badge>
-                            <Badge className={getSettlementStatusColor(settlement.status)}>
-                              {settlement.status}
-                            </Badge>
+                            <SettlementStatusIndicator status={settlement.status?.toUpperCase() as 'DRAFT' | 'REQUESTED' | 'APPROVED' | 'EXECUTED' | 'FAILED' | 'REJECTED' | 'CANCELLED'} />
                           </div>
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                             <div>

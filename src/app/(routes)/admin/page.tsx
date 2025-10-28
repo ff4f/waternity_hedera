@@ -155,20 +155,7 @@ function getRoleColor(role: string): string {
   }
 }
 
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'active':
-      return 'status-executed'
-    case 'pending':
-      return 'status-pending'
-    case 'inactive':
-      return 'status-inactive'
-    case 'maintenance':
-      return 'status-failed'
-    default:
-      return 'status-inactive'
-  }
-}
+import { getStatusColor } from '@/lib/ui'
 
 function getAlertColor(type: string): string {
   switch (type) {

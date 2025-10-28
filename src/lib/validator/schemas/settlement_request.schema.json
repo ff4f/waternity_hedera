@@ -1,55 +1,205 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "settlement_request.schema.json",
-  "title": "Settlement Request Schema",
-  "description": "Schema for settlement requests",
-  "type": "object",
-  "properties": {
-    "messageId": {
-      "type": "string",
-      "format": "uuid",
-      "description": "Unique identifier for the message"
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://waternity.com/schemas/settlement_request.schema.json",
+  "title": "Settlement Request Event Schema",
+  "description": "Schema for settlement request events",
+  "allOf": [
+    {
+      "$ref": "./common.hcs.schema.json"
     },
-    "wellId": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Identifier of the well"
-    },
-    "periodStart": {
-      "type": "string",
-      "format": "date-time",
-      "description": "Start of the settlement period"
-    },
-    "periodEnd": {
-      "type": "string",
-      "format": "date-time",
-      "description": "End of the settlement period"
-    },
-    "grossRevenue": {
-      "type": "number",
-      "minimum": 0,
-      "description": "Gross revenue for the period"
-    },
-    "kwhTotal": {
-      "type": "number",
-      "minimum": 0,
-      "description": "Total kWh generated during the period"
-    },
-    "operatingCosts": {
-      "type": "number",
-      "minimum": 0,
-      "description": "Operating costs for the period"
-    },
-    "netRevenue": {
-      "type": "number",
-      "description": "Net revenue after costs"
-    },
-    "requestedBy": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Entity requesting the settlement"
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "settlement_request"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "settlementId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Unique settlement identifier"
+            },
+            "requestedBy": {
+              "type": "string",
+              "description": "ID of the user requesting settlement"
+            },
+            "period": {
+              "type": "object",
+              "properties": {
+                "startDate": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Settlement period start date"
+                },
+                "endDate": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Settlement period end date"
+                }
+              },
+              "required": ["startDate", "endDate"],
+              "additionalProperties": false
+            },
+            "wells": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "wellId": {
+                    "type": "string",
+                    "pattern": "^WL-[0-9]{3}$",
+                    "description": "Well identifier"
+                  },
+                  "usage": {
+                    "type": "object",
+                    "properties": {
+                      "totalVolume": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "Total water volume consumed"
+                      },
+                      "unit": {
+                        "type": "string",
+                        "enum": ["liters", "cubic_meters", "gallons"],
+                        "description": "Unit of measurement"
+                      },
+                      "readingCount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Number of meter readings in period"
+                      }
+                    },
+                    "required": ["totalVolume", "unit"],
+                    "additionalProperties": false
+                  },
+                  "rates": {
+                    "type": "object",
+                    "properties": {
+                      "baseRate": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "Base rate per unit"
+                      },
+                      "tierRates": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "threshold": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "Usage threshold for this tier"
+                            },
+                            "rate": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "Rate for this tier"
+                            }
+                          },
+                          "required": ["threshold", "rate"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "currency": {
+                        "type": "string",
+                        "enum": ["HBAR", "USD", "EUR", "NGN", "KES", "GHS"],
+                        "description": "Currency for rates"
+                      }
+                    },
+                    "required": ["baseRate", "currency"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["wellId", "usage", "rates"],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            },
+            "calculations": {
+              "type": "object",
+              "properties": {
+                "subtotal": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Subtotal before taxes and fees"
+                },
+                "taxes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "description": "Tax type (e.g., VAT, service tax)"
+                      },
+                      "rate": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "Tax rate as decimal (e.g., 0.15 for 15%)"
+                      },
+                      "amount": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "Tax amount"
+                      }
+                    },
+                    "required": ["type", "rate", "amount"],
+                    "additionalProperties": false
+                  }
+                },
+                "fees": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "description": "Fee type (e.g., service fee, maintenance fee)"
+                      },
+                      "amount": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "Fee amount"
+                      }
+                    },
+                    "required": ["type", "amount"],
+                    "additionalProperties": false
+                  }
+                },
+                "total": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Total amount due"
+                },
+                "currency": {
+                  "type": "string",
+                  "enum": ["HBAR", "USD", "EUR", "NGN", "KES", "GHS"],
+                  "description": "Currency for all amounts"
+                }
+              },
+              "required": ["subtotal", "total", "currency"],
+              "additionalProperties": false
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "description": "Payment due date"
+            },
+            "priority": {
+              "type": "string",
+              "enum": ["LOW", "NORMAL", "HIGH", "URGENT"],
+              "default": "NORMAL",
+              "description": "Settlement priority"
+            }
+          },
+          "required": ["settlementId", "requestedBy", "period", "wells", "calculations", "dueDate"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["eventType", "data"]
     }
-  },
-  "required": ["messageId", "wellId", "periodStart", "periodEnd", "grossRevenue", "kwhTotal", "requestedBy"],
-  "additionalProperties": false
+  ]
 }

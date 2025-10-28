@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { withSchemaAndIdempotency } from '@/lib/validator/withSchemaAndIdempotency';
 import wellCreateSchema from '@/lib/validator/schemas/well_create.schema.json';
-import { requireOperator } from '@/lib/auth/roles';
-import { Role } from '@/lib/types';
+import { requireUser, assertRole, createUnauthorizedResponse, createForbiddenResponse, AuthenticationError, AuthorizationError } from '@/lib/auth/roles';
+import { isValidTopicId } from '@/lib/hedera/ids';
+
+export const runtime = 'nodejs';
+
 
 export async function GET(request: NextRequest) {
   try {
+    // Public read access - no authentication required
+    
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
@@ -21,12 +26,26 @@ export async function GET(request: NextRequest) {
         where,
         skip,
         take: limit,
-        include: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          location: true,
+          status: true,
+          topicId: true,
+          tokenId: true,
+          operatorUserId: true,
+          createdAt: true,
           operator: {
             select: {
               id: true,
-              name: true,
-              username: true
+              name: true
+            }
+          },
+          _count: {
+            select: {
+              events: true,
+              settlements: true,
             }
           }
         },
@@ -46,6 +65,14 @@ export async function GET(request: NextRequest) {
       }
     });
   } catch (error) {
+    if (error instanceof AuthenticationError) {
+      return createUnauthorizedResponse();
+    }
+    
+    if (error instanceof AuthorizationError) {
+      return createForbiddenResponse();
+    }
+    
     console.error('Error fetching wells:', error);
     return new Response(JSON.stringify({
       error: 'Failed to fetch wells'
@@ -64,20 +91,37 @@ export async function POST(request: NextRequest) {
 
 async function createWellHandler(req: NextRequest, res: any, body: any): Promise<Response> {
   try {
+    console.log('[WELLS] POST /api/wells - Creating new well');
+    
     // Require OPERATOR role for well creation
-    const user = await requireOperator(req);
+    const user = await requireUser(req);
+    assertRole(user, 'OPERATOR', 'ADMIN');
     
     const { code, name, location, topicId, operatorUserId, tokenId } = body;
 
+    // Validate topicId format
+    if (!isValidTopicId(topicId)) {
+      return new Response(
+        JSON.stringify({
+          error: 'invalid_topic_id',
+          details: [`Invalid topicId format: ${topicId}. Expected format: x.y.z (e.g., 0.0.123)`]
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Check if operator exists
     const operator = await prisma.user.findUnique({
-      where: { id: operatorUserId }
+      where: { id: operatorUserId },
+      select: {
+            id: true,
+            name: true
+          }
     });
 
     if (!operator) {
-      return new Response(JSON.stringify({
-        error: 'Operator user not found'
-      }), {
+      console.log('[WELLS] Operator not found:', operatorUserId);
+      return new Response(JSON.stringify({ error: 'Operator user not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -89,9 +133,8 @@ async function createWellHandler(req: NextRequest, res: any, body: any): Promise
     });
 
     if (existingWell) {
-      return new Response(JSON.stringify({
-        error: 'Well code already exists'
-      }), {
+      console.log('[WELLS] Well code already exists:', code);
+      return new Response(JSON.stringify({ error: 'Well code already exists' }), {
         status: 409,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -103,22 +146,33 @@ async function createWellHandler(req: NextRequest, res: any, body: any): Promise
         operator: {
           select: {
             id: true,
-            name: true,
-            accountId: true
+            name: true
           }
         }
       }
     });
 
-    return new Response(JSON.stringify(well), {
+    console.log('[WELLS] Well created successfully:', well.id, 'code:', code);
+    
+    return new Response(JSON.stringify({
+      success: true,
+      well
+    }), {
       status: 201,
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Error creating well:', error);
-    return new Response(JSON.stringify({
-      error: 'Failed to create well'
-    }), {
+    console.error('[WELLS] Error creating well:', error);
+    
+    if (error instanceof AuthenticationError) {
+      return createUnauthorizedResponse();
+    }
+    
+    if (error instanceof AuthorizationError) {
+      return createForbiddenResponse();
+    }
+    
+    return new Response(JSON.stringify({ error: 'Failed to create well' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });

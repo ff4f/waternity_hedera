@@ -1,127 +1,85 @@
-import { PrismaClient } from '@prisma/client';
-import { createHash } from 'crypto';
-import { prisma } from '../db/prisma';
+import { prisma } from '@/lib/db/prisma';
+import { sha256Hex } from '../hash';
 
-export interface IdempotencyResult {
-  status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
-  requestHash?: string;
-  resultHash?: string;
-  result?: string;
-  isNew: boolean;
-}
-
-export interface IdempotencyStore {
-  get(key: string, scope: string): Promise<IdempotencyResult | null>;
-  set(key: string, scope: string, status: 'PENDING' | 'SUCCEEDED' | 'FAILED', requestHash?: string, resultHash?: string, result?: string): Promise<void>;
-  update(key: string, scope: string, status: 'SUCCEEDED' | 'FAILED', requestHash?: string, resultHash?: string, result?: string): Promise<void>;
+// Helper to safely stringify values (handles bigint)
+function safeStringify(value: unknown): string {
+  return JSON.stringify(value, (key, val) => (typeof val === 'bigint' ? val.toString() : val));
 }
 
 /**
- * Creates a SHA256 hash of the given data
+ * Ensure idempotent execution backed by Prisma store.
+ * New signature: (key, scope, payloadHash, fn) => { reused, result }
  */
-export function createResultHash(data: any): string {
-  const jsonString = JSON.stringify(data, null, 0);
-  return createHash('sha256').update(jsonString, 'utf8').digest('hex');
-}
+export async function ensureIdempotent<T>(
+  key: string,
+  scope: string,
+  payloadHash: string,
+  fn: () => Promise<T>
+): Promise<{ reused: boolean; result: T }> {
+  const dbKey = `${scope}:${key}`;
 
-/**
- * Prisma-based idempotency store implementation
- */
-export class PrismaIdempotencyStore implements IdempotencyStore {
-  constructor(private db: PrismaClient = prisma) {}
+  // Check existing record
+  const existing = await prisma.idempotency.findUnique({
+    where: { key: dbKey },
+    select: { resultJson: true, resultHash: true }
+  });
 
-  async get(key: string, scope: string): Promise<IdempotencyResult | null> {
-    const record = await this.db.idempotency.findUnique({
-      where: {
-        key_scope: {
-          key,
-          scope,
-        },
-      },
-    });
-
-    if (!record) {
-      return null;
+  if (existing) {
+    // If stored result hash matches current payload hash, reuse cached result
+    if ((existing.resultHash || '') === (payloadHash || '')) {
+      const parsed = existing.resultJson ? JSON.parse(existing.resultJson) : null;
+      return {
+        reused: true,
+        result: parsed as T
+      };
     }
 
-    return {
-      status: record.status as 'PENDING' | 'SUCCEEDED' | 'FAILED',
-      requestHash: record.requestHash || undefined,
-      resultHash: record.resultHash || undefined,
-      result: record.result || undefined,
-      isNew: false,
-    };
+    // Conflict: same key/scope but different payload
+    const conflictError = new Error('Idempotency key conflict: different payload for same key');
+    (conflictError as { status?: number }).status = 409;
+    throw conflictError;
   }
 
-  async set(key: string, scope: string, status: 'PENDING' | 'SUCCEEDED' | 'FAILED', requestHash?: string, resultHash?: string, result?: string): Promise<void> {
-    await this.db.idempotency.upsert({
-      where: {
-        key_scope: {
-          key,
-          scope,
-        },
-      },
-      update: {
-        status,
-        requestHash,
-        resultHash,
-        result,
-      },
-      create: {
-        key,
-        scope,
-        status,
-        requestHash,
-        resultHash,
-        result,
-      },
-    });
-  }
+  // Execute operation and persist result
+  const executed = await fn();
+  const resultJson = safeStringify(executed);
+  const resultHash = sha256Hex(resultJson);
 
-  async update(key: string, scope: string, status: 'SUCCEEDED' | 'FAILED', requestHash?: string, resultHash?: string, result?: string): Promise<void> {
-    await this.db.idempotency.update({
-      where: {
-        key_scope: {
-          key,
-          scope,
-        },
-      },
-      data: {
-        status,
-        requestHash,
-        resultHash,
-        result,
-      },
-    });
-  }
+  // Upsert record (create if not exists, update if concurrently created)
+  await prisma.idempotency.upsert({
+    where: { key: dbKey },
+    create: {
+      key: dbKey,
+      scope,
+      status: 'completed',
+      resultJson: resultJson,
+      resultHash: resultHash
+    },
+    update: {
+      status: 'completed',
+      resultJson: resultJson,
+      resultHash: resultHash
+    }
+  });
+
+  return {
+    reused: false,
+    result: executed
+  };
 }
 
 /**
- * Default idempotency store instance
+ * Clear all idempotency records (useful for testing)
  */
-export const idempotencyStore = new PrismaIdempotencyStore();
-
-/**
- * Extracts idempotency key from request headers or body
- */
-export function getIdempotencyKey(headers: Record<string, string | string[] | undefined>, body?: any): string | null {
-  // First try to get from Idempotency-Key header
-  const headerKey = headers['idempotency-key'] || headers['Idempotency-Key'];
-  if (headerKey && typeof headerKey === 'string') {
-    return headerKey;
-  }
-
-  // Fallback to messageId from body if available
-  if (body && typeof body === 'object' && body.messageId && typeof body.messageId === 'string') {
-    return body.messageId;
-  }
-
-  return null;
+export async function clearIdempotencyStore(): Promise<void> {
+  await prisma.idempotency.deleteMany({});
 }
 
 /**
- * Gets the scope (route pathname) for idempotency
+ * Get idempotency record for debugging
  */
-export function getIdempotencyScope(pathname: string): string {
-  return pathname;
+export async function getIdempotencyRecord(key: string, scope: string) {
+  return prisma.idempotency.findUnique({
+    where: { key: `${scope}:${key}` }
+  });
 }

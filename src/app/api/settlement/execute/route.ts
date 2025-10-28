@@ -1,49 +1,17 @@
-import { prisma } from "@/lib/db/prisma";
-import { submitMessage } from "@/lib/hedera/hcs";
-import { SettlementState } from "@/lib/types";
-import { NextRequest, NextResponse } from "next/server";
-import { withSchema } from "@/lib/validator/withSchema";
-import { ensureIdempotent } from "@/lib/validator/idempotency";
-import settlementExecuteSchema from "@/lib/validator/schemas/settlement_execute.schema.json";
+/**
+ * @deprecated Use /api/settlements/execute instead. This endpoint will be removed in a future version.
+ * Thin proxy to the canonical plural endpoint.
+ */
 
-async function settlementExecuteHandler(req: NextRequest, res: any, body: any): Promise<Response> {
-  const { messageId, settlementId, executedBy, payoutTransactions, executionNotes, timestamp } = body;
+import { NextRequest } from 'next/server';
+import { POST as CanonicalPOST } from '../../settlements/execute/route';
 
-  const result = await ensureIdempotent(
-    messageId,
-    'settlement_execute',
-    async () => {
-      const settlement = await prisma.settlement.findUnique({
-        where: { id: settlementId },
-      });
-
-      if (!settlement) {
-        throw new Error("Settlement not found");
-      }
-
-      for (const transfer of payoutTransactions || []) {
-        await prisma.payout.updateMany({
-          where: {
-            settlementId: settlementId,
-            recipientAccount: transfer.recipientAccount,
-          },
-          data: {
-            txId: transfer.transactionId,
-            status: "EXECUTED",
-          },
-        });
-      }
-
-      const updatedSettlement = await prisma.settlement.update({
-        where: { id: settlementId },
-        data: { status: SettlementState.EXECUTED },
-      });
-
-      return updatedSettlement;
-    }
-  );
-
-  return NextResponse.json(result);
+async function POST(req: NextRequest) {
+  // Log deprecation warning
+  console.warn('[DEPRECATED] /api/settlement/execute is deprecated. Use /api/settlements/execute instead.');
+  
+  // Proxy to canonical plural endpoint
+  return CanonicalPOST(req);
 }
 
-export const POST = withSchema(settlementExecuteSchema, settlementExecuteHandler);
+export { POST };

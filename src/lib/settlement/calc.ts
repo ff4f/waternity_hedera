@@ -1,184 +1,157 @@
-import { prisma } from "@/lib/prisma";
+/**
+ * Settlement calculation utilities with fixed 6-decimal rounding and drift correction
+ * Ensures sum of all payouts equals grossRevenue exactly
+ */
 
-interface PayoutRecipient {
-  account: string;
-  amount: number;
+export interface SettlementRecipient {
+  id: string;
+  percentage: number; // 0-100
+  address: string;
+  name?: string;
 }
 
-interface CalcPayoutsParams {
-  wellId: string;
+export interface SettlementCalculation {
   grossRevenue: number;
+  recipients: SettlementRecipient[];
+  payouts: {
+    recipientId: string;
+    address: string;
+    amount: number; // Fixed to 6 decimals
+    percentage: number;
+  }[];
+  totalPayout: number;
+  drift: number; // Should be 0 after correction
 }
 
 /**
- * Calculates deterministic share distribution for a well settlement
- * Reads WellMembership.shareBps (sum ≤ 10000) and maps to {account, amount}
- * Rounds with fixed 6 decimals and enforces sum equals grossRevenue
- * Last recipient absorbs any rounding difference
+ * Round to exactly 6 decimal places
  */
-export async function calcPayouts({
-  wellId,
-  grossRevenue,
-}: CalcPayoutsParams): Promise<PayoutRecipient[]> {
-  // Validate input
-  if (grossRevenue < 0) {
-    throw new Error("Gross revenue cannot be negative");
-  }
-
-  if (grossRevenue === 0) {
-    return [];
-  }
-
-  // Get all well memberships with share allocations
-  const memberships = await prisma.wellMembership.findMany({
-    where: {
-      wellId,
-      shareBps: {
-        not: null,
-        gt: 0,
-      },
-    },
-    include: {
-      user: true,
-    },
-    orderBy: {
-      id: 'asc', // Deterministic ordering
-    },
-  });
-
-  if (memberships.length === 0) {
-    throw new Error("No valid memberships found for well");
-  }
-
-  // Validate total share doesn't exceed 10000 bps (100%)
-  const totalShareBps = memberships.reduce(
-    (sum, membership) => sum + (membership.shareBps || 0),
-    0
-  );
-
-  if (totalShareBps > 10000) {
-    throw new Error(
-      `Total share allocation (${totalShareBps} bps) exceeds 100% (10000 bps)`
-    );
-  }
-
-  if (totalShareBps === 0) {
-    throw new Error("No valid share allocations found");
-  }
-
-  // Calculate payouts with 6 decimal precision
-  const recipients: PayoutRecipient[] = [];
-  let totalAllocated = 0;
-
-  for (let i = 0; i < memberships.length; i++) {
-    const membership = memberships[i];
-    const shareBps = membership.shareBps || 0;
-    
-    // Get account ID from user
-    const account = membership.user.accountId;
-    if (!account) {
-      throw new Error(
-        `User ${membership.user.id} does not have a Hedera account ID`
-      );
-    }
-
-    let amount: number;
-    
-    // For the last recipient, absorb any rounding difference
-    if (i === memberships.length - 1) {
-      amount = grossRevenue - totalAllocated;
-    } else {
-      // Calculate proportional amount
-      const rawAmount = (grossRevenue * shareBps) / totalShareBps;
-      // Round to 6 decimal places
-      amount = Math.round(rawAmount * 1000000) / 1000000;
-      totalAllocated += amount;
-    }
-
-    // Ensure amount is not negative (edge case protection)
-    if (amount < 0) {
-      amount = 0;
-    }
-
-    // Only include recipients with positive amounts
-    if (amount > 0) {
-      recipients.push({
-        account,
-        amount,
-      });
-    }
-  }
-
-  // Final validation: ensure total equals gross revenue (within floating point precision)
-  const totalPaid = recipients.reduce((sum, r) => sum + r.amount, 0);
-  const difference = Math.abs(totalPaid - grossRevenue);
-  
-  // Allow for tiny floating point differences (1 microunit)
-  if (difference > 0.000001) {
-    throw new Error(
-      `Payout calculation error: total (${totalPaid}) does not equal gross revenue (${grossRevenue})`
-    );
-  }
-
-  return recipients;
+export function roundTo6Decimals(value: number): number {
+  return Math.round(value * 1000000) / 1000000;
 }
 
 /**
- * Validates that a well has valid membership allocations
+ * Calculate settlement payouts with drift correction
+ * Ensures the sum of all payouts equals grossRevenue exactly
  */
-export async function validateWellMemberships(wellId: string): Promise<{
-  isValid: boolean;
-  totalShareBps: number;
-  membershipCount: number;
-  errors: string[];
-}> {
-  const errors: string[] = [];
-  
-  const memberships = await prisma.wellMembership.findMany({
-    where: {
-      wellId,
-      shareBps: {
-        not: null,
-        gt: 0,
-      },
-    },
-    include: {
-      user: true,
-    },
+export function calculateSettlement(
+  grossRevenue: number,
+  recipients: SettlementRecipient[]
+): SettlementCalculation {
+  // Validate inputs
+  if (grossRevenue <= 0) {
+    throw new Error('Gross revenue must be positive');
+  }
+
+  if (!recipients.length) {
+    throw new Error('At least one recipient is required');
+  }
+
+  const totalPercentage = recipients.reduce((sum, r) => sum + r.percentage, 0);
+  if (Math.abs(totalPercentage - 100) > 0.000001) {
+    throw new Error(`Total percentage must equal 100%, got ${totalPercentage}%`);
+  }
+
+  // Calculate initial payouts with 6-decimal rounding
+  const payouts = recipients.map((recipient) => {
+    const rawAmount = (grossRevenue * recipient.percentage) / 100;
+    const roundedAmount = roundTo6Decimals(rawAmount);
+    
+    return {
+      recipientId: recipient.id,
+      address: recipient.address,
+      amount: roundedAmount,
+      percentage: recipient.percentage,
+    };
   });
 
-  const totalShareBps = memberships.reduce(
-    (sum, membership) => sum + (membership.shareBps || 0),
-    0
-  );
+  // Calculate drift (difference between sum and grossRevenue)
+  const totalPayout = payouts.reduce((sum, p) => sum + p.amount, 0);
+  const drift = roundTo6Decimals(grossRevenue - totalPayout);
 
-  if (memberships.length === 0) {
-    errors.push("No valid memberships found");
+  // Apply drift correction to the last recipient
+  if (Math.abs(drift) > 0.000001) {
+    const lastPayout = payouts[payouts.length - 1];
+    lastPayout.amount = roundTo6Decimals(lastPayout.amount + drift);
   }
 
-  if (totalShareBps > 10000) {
-    errors.push(`Total share allocation (${totalShareBps} bps) exceeds 100%`);
-  }
-
-  if (totalShareBps === 0) {
-    errors.push("No valid share allocations found");
-  }
-
-  // Check for users without account IDs
-  const usersWithoutAccounts = memberships.filter(
-    (m) => !m.user.accountId
-  );
-  
-  if (usersWithoutAccounts.length > 0) {
-    errors.push(
-      `${usersWithoutAccounts.length} users do not have Hedera account IDs`
-    );
-  }
+  // Recalculate final totals
+  const finalTotalPayout = payouts.reduce((sum, p) => sum + p.amount, 0);
+  const finalDrift = roundTo6Decimals(grossRevenue - finalTotalPayout);
 
   return {
-    isValid: errors.length === 0,
-    totalShareBps,
-    membershipCount: memberships.length,
-    errors,
+    grossRevenue: roundTo6Decimals(grossRevenue),
+    recipients,
+    payouts,
+    totalPayout: finalTotalPayout,
+    drift: finalDrift,
   };
+}
+
+/**
+ * Validate settlement calculation
+ * Ensures mathematical correctness
+ */
+export function validateSettlement(calculation: SettlementCalculation): boolean {
+  // Check if sum equals gross revenue (within floating point precision)
+  const sumCheck = Math.abs(calculation.totalPayout - calculation.grossRevenue) < 0.000001;
+  
+  // Check if drift is effectively zero
+  const driftCheck = Math.abs(calculation.drift) < 0.000001;
+  
+  // Check if all amounts are properly rounded to 6 decimals
+  const roundingCheck = calculation.payouts.every(p => {
+    const rounded = roundTo6Decimals(p.amount);
+    return Math.abs(p.amount - rounded) < 0.0000001;
+  });
+
+  return sumCheck && driftCheck && roundingCheck;
+}
+
+/**
+ * Convert amount to smallest unit (tinybars for HBAR, or token units)
+ * HBAR: 1 HBAR = 100,000,000 tinybars
+ * Tokens: depends on decimals (usually 6-18)
+ */
+export function toSmallestUnit(amount: number, decimals: number = 8): bigint {
+  const multiplier = Math.pow(10, decimals);
+  const smallestUnit = Math.round(amount * multiplier);
+  return BigInt(smallestUnit);
+}
+
+/**
+ * Convert from smallest unit back to decimal amount
+ */
+export function fromSmallestUnit(amount: bigint, decimals: number = 8): number {
+  const divisor = Math.pow(10, decimals);
+  return Number(amount) / divisor;
+}
+
+/**
+ * Format amount for display with proper decimal places
+ */
+export function formatAmount(amount: number, decimals: number = 6): string {
+  return amount.toFixed(decimals);
+}
+
+/**
+ * Calculate platform fee from gross revenue
+ */
+export function calculatePlatformFee(
+  grossRevenue: number,
+  feePercentage: number = 2.5
+): number {
+  const fee = (grossRevenue * feePercentage) / 100;
+  return roundTo6Decimals(fee);
+}
+
+/**
+ * Calculate net revenue after platform fee
+ */
+export function calculateNetRevenue(
+  grossRevenue: number,
+  feePercentage: number = 2.5
+): number {
+  const fee = calculatePlatformFee(grossRevenue, feePercentage);
+  return roundTo6Decimals(grossRevenue - fee);
 }

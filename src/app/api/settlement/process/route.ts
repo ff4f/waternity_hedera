@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WaternityService } from '@server/lib/waternity-service';
+import { requireUser, assertRole, createUnauthorizedResponse, createForbiddenResponse, AuthenticationError, AuthorizationError } from '@/lib/auth/roles';
 
 const waternityService = new WaternityService();
 waternityService.initialize({ skipHederaInit: true });
 
 export async function POST(req: NextRequest) {
   try {
+    
+    // Require ADMIN role for settlement processing
+    const user = await requireUser(req);
+    assertRole(user, 'ADMIN');
+    
     const { settlementId } = await req.json();
 
     if (!settlementId) {
@@ -25,6 +31,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ distributionResult });
   } catch (error) {
     console.error('Error processing settlement:', error);
+    
+    if (error instanceof AuthenticationError) {
+      return createUnauthorizedResponse();
+    }
+    
+    if (error instanceof AuthorizationError) {
+      return createForbiddenResponse();
+    }
+    
     return NextResponse.json({ error: 'Failed to process settlement' }, { status: 500 });
   }
 }

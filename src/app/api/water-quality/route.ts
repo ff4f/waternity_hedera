@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { withSchemaAndIdempotency } from "@/lib/validator/withSchemaAndIdempotency";
 import meterReadingSchema from "@/lib/validator/schemas/meter_reading.schema.json";
 import { createHcsEvent } from "@/lib/hcs/events";
+import { notFound, serverError } from '@/lib/http/errors';
+import { requireUser, assertRole, createUnauthorizedResponse, createForbiddenResponse, AuthenticationError, AuthorizationError } from '@/lib/auth/roles';
 
 async function createWaterQualityRecord({
   wellId,
@@ -75,6 +77,12 @@ async function createWaterQualityRecord({
 }
 
 async function createWaterQualityHandler(req: NextRequest, res: any, body: any): Promise<Response> {
+  console.log('[WATER-QUALITY] POST /api/water-quality - Recording water quality data');
+  
+  // Require OPERATOR or ADMIN role
+  const user = await requireUser(req);
+  assertRole(user, 'OPERATOR', 'ADMIN');
+  
   const {
     wellId,
     ph,
@@ -100,9 +108,11 @@ async function createWaterQualityHandler(req: NextRequest, res: any, body: any):
   });
 
   if (!well) {
+    console.log('[WATER-QUALITY] Well not found:', wellId);
     return NextResponse.json({ error: "Well not found" }, { status: 404 });
   }
 
+  console.log('[WATER-QUALITY] Creating water quality record for well:', wellId);
   const result = await createWaterQualityRecord({
     wellId,
     ph,
@@ -115,6 +125,8 @@ async function createWaterQualityHandler(req: NextRequest, res: any, body: any):
     testedBy,
     certificationBody
   });
+
+  console.log('[WATER-QUALITY] Data recorded successfully - hcsEventId:', result.hcsEvent.id);
 
   return new Response(JSON.stringify(result), {
     status: 201,
@@ -163,7 +175,21 @@ async function getWaterQualityHandler(req: NextRequest, context?: any) {
 
 // Handle different HTTP methods
 export async function POST(req: NextRequest) {
-  return withSchemaAndIdempotency(meterReadingSchema, createWaterQualityHandler)(req);
+  try {
+    return withSchemaAndIdempotency(meterReadingSchema, createWaterQualityHandler)(req);
+  } catch (error) {
+    console.error('[WATER-QUALITY] Error in POST handler:', error);
+    
+    if (error instanceof AuthenticationError) {
+      return createUnauthorizedResponse();
+    }
+    
+    if (error instanceof AuthorizationError) {
+      return createForbiddenResponse();
+    }
+    
+    return NextResponse.json({ error: 'Failed to record water quality data' }, { status: 500 });
+  }
 }
 
 export async function GET(req: NextRequest) {

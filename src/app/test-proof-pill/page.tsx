@@ -1,6 +1,6 @@
 'use client';
 
-import { ProofPill } from '@/components/ProofPill';
+import ProofPill from '@/components/ProofPill';
 
 export default function TestProofPillPage() {
   const testWellIds = [
@@ -30,7 +30,11 @@ export default function TestProofPillPage() {
                 <h3 className="text-lg font-medium text-gray-700 mb-3">
                   ProofPill Component:
                 </h3>
-                <ProofPill wellId={wellId} className="mb-4" />
+                <ProofPill 
+                  hashscanUrl={`https://hashscan.io/testnet/topic/${wellId}`}
+                  mirrorUrl={`https://testnet.mirrornode.hedera.com/api/v1/topics/${wellId}`}
+                  idLabel="Topic"
+                />
               </div>
               
               <div className="mt-6 p-4 bg-gray-50 rounded">

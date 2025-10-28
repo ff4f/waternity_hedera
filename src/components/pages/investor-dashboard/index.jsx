@@ -11,6 +11,7 @@ import FundingModal from './components/FundingModal';
 import Icon from '../../components/AppIcon';
 import Button from '../../components/ui/Button';
 import WalletButton from '../../components/WalletButton';
+import { WellsListSkeleton } from '../../Skeleton';
 import { api } from '../../lib/api';
 
 const InvestorDashboard = () => {
@@ -25,15 +26,19 @@ const InvestorDashboard = () => {
   const [filters, setFilters] = useState({});
   const [wells, setWells] = useState([]);
   const [filteredWells, setFilteredWells] = useState([]);
+  const [isLoadingWells, setIsLoadingWells] = useState(true);
 
   useEffect(() => {
     const fetchWells = async () => {
       try {
+        setIsLoadingWells(true);
         const data = await api('/api/wells');
         setWells(data);
         setFilteredWells(data);
       } catch (error) {
         console.error('Failed to fetch wells', error);
+      } finally {
+        setIsLoadingWells(false);
       }
     };
 
@@ -212,7 +217,9 @@ const InvestorDashboard = () => {
                 </div>
               </div>
 
-              {filteredWells?.length > 0 ? (
+              {isLoadingWells ? (
+                <WellsListSkeleton count={6} />
+              ) : filteredWells?.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                   {filteredWells?.map((well) => (
                     <WellCard

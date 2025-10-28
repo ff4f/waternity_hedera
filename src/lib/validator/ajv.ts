@@ -1,48 +1,26 @@
-import Ajv from 'ajv';
+import Ajv from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
-import { JSONSchemaType } from 'ajv';
+import commonHcsSchema from './schemas/common.hcs.schema.json';
 
-// Singleton AJV instance with strict mode and JSON Schema 2020-12
-class AjvSingleton {
-  private static instance: Ajv;
+// Create AJV 2020-12 singleton instance
+const ajv = new Ajv({
+  strict: false,
+  allErrors: true,
+  verbose: true,
+  discriminator: true,
+  validateFormats: true,
+  validateSchema: false,
+});
 
-  public static getInstance(): Ajv {
-    if (!AjvSingleton.instance) {
-      AjvSingleton.instance = new Ajv({
-        strict: true,
-        strictSchema: true,
-        strictNumbers: true,
-        strictTypes: true,
-        strictTuples: true,
-        strictRequired: true,
-        allErrors: true,
-        removeAdditional: false,
-        useDefaults: false,
-        coerceTypes: false
-      });
+// Add format validators
+addFormats(ajv);
 
-      // Add format validation (uuid, date-time, etc.)
-      addFormats(AjvSingleton.instance);
-    }
+// Add common schema for referencing
+ajv.addSchema(commonHcsSchema, 'https://waternity.com/schemas/common.hcs.schema.json');
+ajv.addSchema(commonHcsSchema, './common.hcs.schema.json');
 
-    return AjvSingleton.instance;
-  }
-}
-
-export const ajv = AjvSingleton.getInstance();
-export type { JSONSchemaType };
+// Export singleton instance
 export default ajv;
 
-// Validate data against a specific schema
-export function validateSchema(schemaId: string, data: any) {
-  const validate = ajv.getSchema(schemaId);
-  if (!validate) {
-    throw new Error(`Schema not found: ${schemaId}`);
-  }
-  
-  const valid = validate(data);
-  return {
-    valid,
-    errors: validate.errors || []
-  };
-}
+// Export types for convenience
+export type { ValidateFunction, ErrorObject } from 'ajv';

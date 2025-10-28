@@ -1,148 +1,156 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { pullAndUpsert, consensusTimestampToDate } from "@/lib/mirror/cursors";
-import { generateEventLinks } from "@/lib/hedera/links";
-import { z } from "zod";
+import { isValidTopicId } from "@/lib/hedera/ids";
+import { generateHcsLinks } from "@/lib/hedera/links";
 
-const QuerySchema = z.object({
-  refresh: z.coerce.boolean().default(false),
-  limit: z.coerce.number().min(1).max(100).default(50),
-  offset: z.coerce.number().min(0).default(0),
-});
 
-interface EventWithLinks {
-  id: string;
-  type: string;
-  messageId: string;
-  consensusTime: Date | null;
-  sequenceNumber: bigint | null;
-  txId: string | null;
-  payload: any;
-  runningHash: string | null;
-  createdAt: Date;
-  links: {
-    hashscan: string;
-    mirror: string;
+interface RouteParams {
+  params: {
+    id: string;
   };
 }
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: RouteParams
 ) {
+  console.log('[WELLS] GET /api/wells/[id]/events - Fetching well events');
+  
   try {
-    const wellId = params.id;
-    const url = new URL(request.url);
-    const query = QuerySchema.parse(Object.fromEntries(url.searchParams));
+    const { id: wellId } = params;
+    const { searchParams } = new URL(request.url);
+    const refresh = searchParams.get("refresh") === "true";
 
-    // Get well and validate it exists
+    // Get well information
     const well = await prisma.well.findUnique({
       where: { id: wellId },
-      select: {
-        id: true,
-        topicId: true,
-        name: true
-      }
+      select: { id: true, topicId: true, name: true },
     });
 
     if (!well) {
-      return NextResponse.json(
-        { error: 'Well not found' },
-        { status: 404 }
+      console.log('[WELLS] Well not found:', wellId);
+      return new Response(JSON.stringify({ error: "Well not found" }), { status: 404, headers: { "Content-Type": "application/json" } });
+    }
+
+    // Validate topicId
+    if (!isValidTopicId(well.topicId)) {
+      return new Response(
+        JSON.stringify({
+          error: 'invalid_topic_id',
+          details: [`Invalid topicId format: ${well.topicId}. Expected format: x.y.z (e.g., 0.0.123)`]
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // If refresh=true, trigger pullAndUpsert to get latest messages
-    if (query.refresh) {
+    // Optional refresh: pull latest events from Mirror Node
+    if (refresh) {
+      console.log('[WELLS] Refreshing events from mirror node for well:', wellId);
       try {
-        await pullAndUpsert({ topicId: well.topicId, wellId: well.id });
+        // Call the pull-topic endpoint internally
+        const pullResponse = await fetch(
+          new URL("/api/system/pull-topic", request.url),
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ wellId }),
+          }
+        );
+
+        if (!pullResponse.ok) {
+          console.warn("Failed to refresh events from Mirror Node:", pullResponse.statusText);
+          // Continue with existing events even if refresh fails
+        }
       } catch (error) {
-        console.warn('Failed to refresh messages from mirror:', error);
-        // Continue with existing local events
+        console.warn("Failed to refresh events:", error);
+        // Continue with existing events even if refresh fails
       }
     }
 
-    // Fetch local events for the well (including those without consensusTime)
-    const localEvents = await prisma.hcsEvent.findMany({
-      where: {
-        wellId: wellId
-      },
+    // Fetch events from database, sorted by consensusTime then sequenceNumber
+    console.log('[WELLS] Fetching events from database for well:', wellId);
+    const events = await prisma.hcsEvent.findMany({
+      where: { wellId },
       orderBy: [
-        { consensusTime: 'asc' },
-        { sequenceNumber: 'asc' },
-        { createdAt: 'asc' }
+        { consensusTime: "asc" },
+        { sequenceNumber: "asc" },
       ],
-      take: query.limit,
-      skip: query.offset
+      select: {
+        id: true,
+        messageId: true,
+        type: true,
+        consensusTime: true,
+        sequenceNumber: true,
+        txId: true,
+        hash: true,
+        payloadJson: true,
+        createdAt: true,
+      },
     });
 
-    const eventsWithLinks: EventWithLinks[] = localEvents.map(event => {
-      // Generate links only if we have sequenceNumber (from consensus)
-      const links = event.sequenceNumber 
-        ? generateEventLinks(well.topicId, event.sequenceNumber.toString())
-        : { hashscan: '', mirror: '' };
-      
+    // Transform events and add links
+    const eventsWithLinks = events.map((event) => {
+      // Parse payload JSON
+      let payload = null;
+      try {
+        payload = event.payloadJson ? JSON.parse(event.payloadJson) : null;
+      } catch (error) {
+        console.warn(`Failed to parse payload for event ${event.id}:`, error);
+      }
+
+      // Generate consensus timestamp in Hedera format (handle null consensusTime)
+      let consensusTimestamp = "0.0";
+      if (event.consensusTime) {
+        consensusTimestamp = `${Math.floor(event.consensusTime.getTime() / 1000)}.${(
+          (event.consensusTime.getTime() % 1000) * 1_000_000
+        ).toString().padStart(9, "0")}`;
+      }
+
+      // Generate Hedera links
+      const links = generateHcsLinks(
+        well.topicId,
+        event.sequenceNumber ? Number(event.sequenceNumber) : undefined,
+        event.txId || undefined
+      );
+
       return {
         id: event.id,
-        type: event.type,
         messageId: event.messageId,
-        consensusTime: event.consensusTime,
-        sequenceNumber: event.sequenceNumber,
-        txId: event.txId,
-        payload: typeof event.payloadJson === 'string' ? JSON.parse(event.payloadJson) : event.payloadJson,
-        runningHash: event.hash,
-        createdAt: event.createdAt,
-        links: {
-          hashscan: links.hashscan,
-          mirror: links.mirror
-        }
+        type: event.type,
+        consensusTime: event.consensusTime?.toISOString() || null,
+        consensusTimestamp,
+        sequenceNumber: event.sequenceNumber ? Number(event.sequenceNumber) : null,
+        transactionId: event.txId,
+        hash: event.hash,
+        payload,
+        links,
+        createdAt: event.createdAt.toISOString(),
       };
     });
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        wellId: well.id,
-        wellName: well.name,
-        topicId: well.topicId,
-        events: eventsWithLinks,
-        pagination: {
-          limit: query.limit,
-          offset: query.offset,
-          total: eventsWithLinks.length,
-          hasMore: eventsWithLinks.length === query.limit
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('Failed to fetch well events:', error);
+    console.log('[WELLS] Successfully fetched', eventsWithLinks.length, 'events for well:', wellId);
     
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { 
-          error: 'Invalid query parameters',
-          details: error.errors
+    return new Response(
+      JSON.stringify({
+        success: true,
+        well: {
+          id: well.id,
+          name: well.name,
+          topicId: well.topicId,
         },
-        { status: 400 }
-      );
-    }
-
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+        events: eventsWithLinks,
+        total: eventsWithLinks.length,
+        refreshed: refresh,
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
     );
+  } catch (error) {
+    console.error('[WELLS] Error fetching well events:', error);
+    return new Response(JSON.stringify({ error: 'Failed to fetch well events' }), { status: 500, headers: { "Content-Type": "application/json" } });
   }
-}
-
-// OPTIONS handler for CORS
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    },
-  });
 }

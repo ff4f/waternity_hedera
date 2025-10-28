@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionFromRequest } from './session';
+import { getUserFromRequest } from './session';
 import { Role } from '../types';
 
 // Role hierarchy for authorization
@@ -25,7 +25,7 @@ export async function withAuth(
 ): Promise<{ user: any; error?: NextResponse }> {
   try {
     // Get user session
-    const user = await getSessionFromRequest(request);
+    const user = await getUserFromRequest(request);
 
     if (!user) {
       return {
@@ -39,14 +39,14 @@ export async function withAuth(
 
     // Check role-based authorization
     if (options.requiredRole) {
-      const userRoleLevel = ROLE_HIERARCHY[user.role as Role] ?? USER_ROLE_LEVEL;
+      const userRoleLevel = ROLE_HIERARCHY[user.role.name as Role] ?? USER_ROLE_LEVEL;
       const requiredRoleLevel = ROLE_HIERARCHY[options.requiredRole as Role] ?? USER_ROLE_LEVEL;
 
       // Allow if user has sufficient role level
       const hasRequiredRole = userRoleLevel >= requiredRoleLevel;
       
       // Allow if user is accessing their own resource
-      const isSelfAccess = options.allowSelf && options.resourceUserId === user.sub;
+      const isSelfAccess = options.allowSelf && options.resourceUserId === user.id;
 
       if (!hasRequiredRole && !isSelfAccess) {
         return {

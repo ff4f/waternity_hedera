@@ -126,10 +126,10 @@ const GlobalHeader = ({ isAuthenticated = false, userRole = null, onRoleChange }
           <div className="hidden md:flex items-center space-x-3">
             {isLandingPage ? (
               <div className="flex items-center space-x-3">
-                <Button variant="ghost" onClick={() => router.push('/investor-dashboard')}>
+                <Button variant="ghost" onClick={() => router.push('/signin')}>
                   Sign In
                 </Button>
-                <Button variant="default" onClick={() => router.push('/investor-dashboard')}>
+                <Button variant="default" onClick={() => router.push('/register')}>
                   Get Started
                 </Button>
               </div>
@@ -206,7 +206,7 @@ const GlobalHeader = ({ isAuthenticated = false, userRole = null, onRoleChange }
                     variant="ghost" 
                     fullWidth 
                     onClick={() => {
-                      router.push('/investor-dashboard');
+                      router.push('/signin');
                       setIsMobileMenuOpen(false);
                     }}
                   >
@@ -216,7 +216,7 @@ const GlobalHeader = ({ isAuthenticated = false, userRole = null, onRoleChange }
                     variant="default" 
                     fullWidth
                     onClick={() => {
-                      router.push('/investor-dashboard');
+                      router.push('/register');
                       setIsMobileMenuOpen(false);
                     }}
                   >

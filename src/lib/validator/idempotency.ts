@@ -1,9 +1,7 @@
-import { PrismaClient } from '@prisma/client';
 import { createHash } from 'crypto';
+import { prisma } from '@/lib/db/prisma';
 
-const prisma = new PrismaClient();
-
-export interface IdempotencyResult<T = any> {
+export interface IdempotencyResult<T = unknown> {
   isNew: boolean;
   result?: T;
   resultHash?: string;
@@ -25,10 +23,7 @@ export async function ensureIdempotent<T>(
     // Check if operation already exists
     const existing = await prisma.idempotency.findUnique({
       where: {
-        key_scope: {
-          key,
-          scope
-        }
+        key: `${scope}:${key}`
       }
     });
 
@@ -37,7 +32,7 @@ export async function ensureIdempotent<T>(
         // Return cached result
         return {
           isNew: false,
-          result: existing.result ? JSON.parse(existing.result) : null,
+          result: existing.resultJson ? JSON.parse(existing.resultJson) as T : (null as unknown as T),
           resultHash: existing.resultHash
         };
       } else if (existing.status === 'processing') {
@@ -54,7 +49,7 @@ export async function ensureIdempotent<T>(
     // Create new idempotency record with processing status
     await prisma.idempotency.create({
       data: {
-        key,
+        key: `${scope}:${key}`,
         scope,
         status: 'processing'
       }
@@ -74,14 +69,11 @@ export async function ensureIdempotent<T>(
       // Update idempotency record with completed status
       await prisma.idempotency.update({
         where: {
-          key_scope: {
-            key,
-            scope
-          }
+          key: `${scope}:${key}`
         },
         data: {
           status: 'completed',
-          result: JSON.stringify(result, (key, value) => 
+          resultJson: JSON.stringify(result, (key, value) => 
             typeof value === 'bigint' ? value.toString() : value
           ),
           resultHash
@@ -97,10 +89,7 @@ export async function ensureIdempotent<T>(
       // Mark operation as failed
       await prisma.idempotency.update({
         where: {
-          key_scope: {
-            key,
-            scope
-          }
+          key: `${scope}:${key}`
         },
         data: {
           status: 'failed'
@@ -145,11 +134,8 @@ export async function getIdempotencyStatus(
 ): Promise<{ status: string; resultHash: string | null } | null> {
   const record = await prisma.idempotency.findUnique({
     where: {
-      key_scope: {
-        key,
-        scope
-      }
-    },
+        key: `${scope}:${key}`
+      },
     select: {
       status: true,
       resultHash: true

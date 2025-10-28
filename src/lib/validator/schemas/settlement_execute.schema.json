@@ -1,58 +1,280 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "settlement_execute.schema.json",
-  "title": "Settlement Execute Schema",
-  "description": "Schema for settlement execution",
-  "type": "object",
-  "properties": {
-    "messageId": {
-      "type": "string",
-      "format": "uuid",
-      "description": "Unique identifier for the message"
+  "$id": "https://waternity.com/schemas/settlement_execute.schema.json",
+  "title": "Settlement Execute Event Schema",
+  "description": "Schema for settlement execution events",
+  "allOf": [
+    {
+      "$ref": "./common.hcs.schema.json"
     },
-    "settlementId": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Identifier of the settlement to execute"
-    },
-    "assetType": {
-      "type": "string",
-      "enum": ["HBAR", "TOKEN"],
-      "description": "Type of asset for settlement"
-    },
-    "tokenId": {
-      "type": "string",
-      "description": "Token ID (required when assetType is TOKEN)"
-    },
-    "amount": {
-      "type": "number",
-      "minimum": 0,
-      "exclusiveMinimum": true,
-      "description": "Amount to settle"
-    },
-    "executedBy": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Entity executing the settlement"
-    },
-    "executionTimestamp": {
-      "type": "string",
-      "format": "date-time",
-      "description": "Timestamp of execution"
-    },
-    "transactionId": {
-      "type": "string",
-      "description": "Hedera transaction ID"
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "settlement_execute"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "settlementId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Reference to the original settlement request"
+            },
+            "approvalId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Reference to the settlement approval"
+            },
+            "executedBy": {
+              "type": "string",
+              "description": "ID of the user executing the settlement"
+            },
+            "executionDate": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When the settlement was executed"
+            },
+            "executionStatus": {
+              "type": "string",
+              "enum": ["INITIATED", "IN_PROGRESS", "COMPLETED", "FAILED", "CANCELLED"],
+              "description": "Current execution status"
+            },
+            "transactionDetails": {
+              "type": "object",
+              "properties": {
+                "hederaTransactionId": {
+                  "type": "string",
+                  "description": "Hedera transaction ID for token transfers"
+                },
+                "hederaTransactionHash": {
+                  "type": "string",
+                  "description": "Hedera transaction hash"
+                },
+                "consensusTimestamp": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Hedera consensus timestamp"
+                },
+                "fromAccount": {
+                  "type": "string",
+                  "pattern": "^0\\.0\\.[0-9]+$",
+                  "description": "Source Hedera account ID"
+                },
+                "toAccount": {
+                  "type": "string",
+                  "pattern": "^0\\.0\\.[0-9]+$",
+                  "description": "Destination Hedera account ID"
+                },
+                "tokenId": {
+                  "type": "string",
+                  "pattern": "^0\\.0\\.[0-9]+$",
+                  "description": "Hedera token ID used for payment"
+                },
+                "amount": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Amount transferred"
+                },
+                "currency": {
+                  "type": "string",
+                  "enum": ["HBAR", "USD", "EUR", "NGN", "KES", "GHS"],
+                  "description": "Currency of the transfer"
+                },
+                "gasUsed": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Gas/fees used for the transaction"
+                },
+                "exchangeRate": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Exchange rate used for conversion"
+                }
+              },
+              "additionalProperties": false
+            },
+            "paymentBreakdown": {
+              "type": "object",
+              "properties": {
+                "totalAmount": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Total settlement amount"
+                },
+                "platformFee": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Platform service fee"
+                },
+                "networkFee": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Hedera network transaction fee"
+                },
+                "netAmount": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Net amount received by beneficiary"
+                },
+                "currency": {
+                  "type": "string",
+                  "enum": ["HBAR", "USD", "EUR", "NGN", "KES", "GHS"],
+                  "description": "Currency for all amounts"
+                }
+              },
+              "required": ["totalAmount", "netAmount", "currency"],
+              "additionalProperties": false
+            },
+            "beneficiaries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "beneficiaryId": {
+                    "type": "string",
+                    "description": "ID of the beneficiary"
+                  },
+                  "hederaAccountId": {
+                    "type": "string",
+                    "pattern": "^0\\.0\\.[0-9]+$",
+                    "description": "Beneficiary's Hedera account ID"
+                  },
+                  "amount": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Amount paid to this beneficiary"
+                  },
+                  "percentage": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "Percentage of total settlement"
+                  },
+                  "transactionId": {
+                    "type": "string",
+                    "description": "Individual transaction ID for this payment"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": ["PENDING", "COMPLETED", "FAILED"],
+                    "description": "Payment status for this beneficiary"
+                  }
+                },
+                "required": ["beneficiaryId", "amount", "status"],
+                "additionalProperties": false
+              },
+              "description": "List of payment beneficiaries"
+            },
+            "executionSteps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "step": {
+                    "type": "string",
+                    "enum": ["VALIDATION", "AUTHORIZATION", "TOKEN_TRANSFER", "CONFIRMATION", "NOTIFICATION"],
+                    "description": "Execution step type"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": ["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED", "SKIPPED"],
+                    "description": "Status of this step"
+                  },
+                  "timestamp": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When this step was executed"
+                  },
+                  "details": {
+                    "type": "string",
+                    "description": "Additional details about this step"
+                  },
+                  "errorMessage": {
+                    "type": "string",
+                    "description": "Error message if step failed"
+                  }
+                },
+                "required": ["step", "status", "timestamp"],
+                "additionalProperties": false
+              },
+              "description": "Detailed execution steps"
+            },
+            "notifications": {
+              "type": "object",
+              "properties": {
+                "beneficiariesNotified": {
+                  "type": "boolean",
+                  "description": "Whether beneficiaries were notified"
+                },
+                "adminNotified": {
+                  "type": "boolean",
+                  "description": "Whether admin was notified"
+                },
+                "notificationMethod": {
+                  "type": "string",
+                  "enum": ["EMAIL", "SMS", "PUSH", "WEBHOOK"],
+                  "description": "Method used for notifications"
+                },
+                "notificationTimestamp": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When notifications were sent"
+                }
+              },
+              "additionalProperties": false
+            },
+            "auditTrail": {
+              "type": "object",
+              "properties": {
+                "executionLogs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "description": "Execution log entries"
+                  }
+                },
+                "verificationChecks": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "checkType": {
+                        "type": "string",
+                        "description": "Type of verification performed"
+                      },
+                      "result": {
+                        "type": "boolean",
+                        "description": "Whether check passed"
+                      },
+                      "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "When check was performed"
+                      }
+                    },
+                    "required": ["checkType", "result", "timestamp"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "completionDate": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When the settlement execution was completed"
+            },
+            "failureReason": {
+              "type": "string",
+              "description": "Reason for execution failure (if applicable)"
+            }
+          },
+          "required": ["settlementId", "executedBy", "executionDate", "executionStatus"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["eventType", "data"]
     }
-  },
-  "required": ["messageId", "settlementId", "assetType", "amount", "executedBy"],
-  "if": {
-    "properties": {
-      "assetType": {"const": "TOKEN"}
-    }
-  },
-  "then": {
-    "required": ["tokenId"]
-  },
-  "additionalProperties": false
+  ]
 }

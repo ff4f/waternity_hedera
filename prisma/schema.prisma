@@ -1,23 +1,38 @@
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
   provider = "prisma-client-js"
 }
 
+// Note: Using String instead of enum for SQLite compatibility
+// Valid values for status: DRAFT, REQUESTED, APPROVED, EXECUTED, FAILED
+// Valid values for TokenType: HTS_FT, HTS_NFT
+// Valid values for SourceType: DOCUMENT, SETTLEMENT, METER_READING
+
 model User {
-  id          String  @id @default(cuid())
-  name        String
-  username    String  @unique
-  password    String
-  accountId   String?
-  walletEvm   String?
-  role        String
-  createdAt   DateTime @default(now())
-  wells       Well[]
-  memberships WellMembership[]
+  id                    String    @id @default(cuid())
+  email                 String    @unique
+  name                  String?
+  hashedPassword        String
+  salt                  String
+  resetToken            String?
+  resetTokenExpiresAt   DateTime?
+  hederaAccountId       String?
+  walletEvm             String?
+  createdAt             DateTime  @default(now())
+  role                  Role      @relation(fields: [roleId], references: [id])
+  roleId                String
+  wells                 Well[]
+  memberships           WellMembership[]
+}
+
+model Role {
+  id    String @id @default(cuid())
+  name  String @unique
+  users User[]
 }
 
 model Well {
@@ -25,6 +40,7 @@ model Well {
   code        String   @unique
   name        String
   location    String
+  status      String   @default("ACTIVE") // ACTIVE, INACTIVE, MAINTENANCE, PLANNING, CONSTRUCTION
   topicId     String
   tokenId     String?
   operator    User     @relation(fields: [operatorUserId], references: [id])
@@ -36,25 +52,219 @@ model Well {
   settlements Settlement[]
   tokens      Token[]
   waterQuality WaterQuality[]
+}
 
-  @@index([topicId])
+// THG Identity Platform Models
+model IdentityWallet {
+  id          String   @id @default(cuid())
+  did         String   @unique
+  accountId   String   @unique
+  publicKey   String
+  createdAt   DateTime @default(now())
+  credentials DigitalCredential[]
+}
+
+model DigitalCredential {
+  id               String          @id @default(cuid())
+  type             String          // CredentialType enum as string
+  issuer           String
+  subject          String
+  issuanceDate     DateTime
+  expirationDate   DateTime?
+  credentialData   String          // JSON string for SQLite compatibility
+  signature        String
+  isRevoked        Boolean         @default(false)
+  createdAt        DateTime        @default(now())
+  wallet           IdentityWallet  @relation(fields: [subject], references: [did])
+
+  @@index([subject])
+  @@index([type])
+  @@index([isRevoked])
 }
 
 model WellMembership {
-  id       String @id @default(cuid())
-  user     User   @relation(fields: [userId], references: [id])
-  userId   String
-  well     Well   @relation(fields: [wellId], references: [id])
-  wellId   String
-  roleName String
-  shareBps Int?
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  well      Well     @relation(fields: [wellId], references: [id])
+  wellId    String
+  roleName  String
+  shareBps  Int?
+  createdAt DateTime @default(now())
 
   @@unique([userId, wellId, roleName])
 }
 
+model TokenizedAsset {
+  id                String   @id @default(cuid())
+  tokenId           String   @unique
+  assetType         String
+  metadata          String   // JSON string
+  metadataHash      String
+  totalSupply       Int
+  circulatingSupply Int
+  owner             String
+  fractional        Boolean  @default(true)
+  tradeable         Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  ownerships  FractionalOwnership[]
+  performance AssetPerformance[]
+
+  @@index([assetType])
+  @@index([owner])
+}
+
+model FractionalOwnership {
+  id             String   @id @default(cuid())
+  assetId        String
+  tokenId        String
+  owner          String
+  shares         Int
+  percentage     Float
+  purchasePrice  Float
+  purchaseDate   DateTime
+  dividendsEarned Float   @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  asset TokenizedAsset @relation(fields: [assetId], references: [id])
+
+  @@unique([assetId, owner])
+  @@index([owner])
+  @@index([tokenId])
+}
+
+model AssetPerformance {
+  id                 String   @id @default(cuid())
+  assetId            String
+  revenue            Float
+  expenses           Float
+  netIncome          Float
+  roi                Float
+  period             String
+  waterProduced      Float?
+  waterSold          Float?
+  conservationImpact Float?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  asset TokenizedAsset @relation(fields: [assetId], references: [id])
+
+  @@index([assetId])
+  @@index([period])
+}
+
+model LendingPool {
+  id                 String   @id @default(cuid())
+  name               String
+  description        String
+  totalCapacity      Int
+  availableLiquidity Int
+  totalLoaned        Int
+  averageAPY         Float
+  minimumLoanAmount  Int
+  maximumLoanAmount  Int
+  riskLevel          String
+  tokenId            String   @unique
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  providers LiquidityProvider[]
+  loans     Loan[]
+
+  @@index([riskLevel])
+}
+
+model LiquidityProvider {
+  id            String   @id @default(cuid())
+  provider      String
+  poolId        String
+  amount        Int
+  shares        Int
+  earnedInterest Float   @default(0)
+  depositedAt   DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  pool LendingPool @relation(fields: [poolId], references: [id])
+
+  @@index([provider])
+  @@index([poolId])
+}
+
+model Loan {
+  id                String     @id @default(cuid())
+  borrower          String
+  lender            String?
+  amount            Int
+  purpose           String
+  duration          Int
+  interestRate      Float
+  collateralType    String
+  collateralValue   Float
+  collateralTokenId String?
+  status            String
+  disbursedAt       DateTime?
+  dueDate           DateTime?
+  repaidAmount      Int       @default(0)
+  remainingAmount   Int
+  groupMembers      String?   // JSON string
+  creditScore       Int
+  businessPlan      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  pool       LendingPool?       @relation(fields: [lender], references: [id])
+  repayments RepaymentSchedule[]
+
+  @@index([borrower])
+  @@index([status])
+  @@index([lender])
+}
+
+model RepaymentSchedule {
+  id                String    @id @default(cuid())
+  loanId            String
+  installmentNumber Int
+  dueDate           DateTime
+  principalAmount   Float
+  interestAmount    Float
+  totalAmount       Float
+  paidAmount        Float     @default(0)
+  isPaid            Boolean   @default(false)
+  paidAt            DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  loan Loan @relation(fields: [loanId], references: [id])
+
+  @@index([loanId])
+  @@index([dueDate])
+  @@index([isPaid])
+}
+
+model CreditScore {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  score             Int
+  paymentHistory    Float
+  creditUtilization Float
+  lengthOfHistory   Float
+  typesOfCredit     Float
+  newCredit         Float
+  lastUpdated       DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@index([score])
+}
+
 model HcsEvent {
   id              String      @id @default(cuid())
-  well            Well?       @relation(fields: [wellId], references: [id])
+  well            Well?       @relation(fields: [wellId], references: [id], onDelete: SetNull)
   wellId          String?
   type            String
   messageId       String      @unique
@@ -74,42 +284,39 @@ model HcsEvent {
 }
 
 model Document {
-  id            String    @id @default(cuid())
-  well          Well      @relation(fields: [wellId], references: [id])
-  wellId        String
-  type          String
-  cid           String
-  hfsFileId     String?
-  anchoredEvent HcsEvent? @relation(fields: [anchoredEventId], references: [id])
+  id              String    @id @default(cuid())
+  well            Well      @relation(fields: [wellId], references: [id], onDelete: Cascade)
+  wellId          String
+  type            String
+  name            String?
+  cid             String?
+  hfsFileId       String?
+  anchoredEvent   HcsEvent? @relation(fields: [anchoredEventId], references: [id], onDelete: SetNull)
   anchoredEventId String?
-  createdAt     DateTime  @default(now())
+  digestAlgo      String?
+  digestHex       String?
+  createdAt       DateTime  @default(now())
 }
 
 model Settlement {
-  id             String   @id @default(cuid())
-  well           Well     @relation(fields: [wellId], references: [id])
-  wellId         String
-  // Energy settlement fields
-  periodStart    DateTime?
-  periodEnd      DateTime?
-  kwhTotal       Float?
-  grossRevenue   Float?
-  requestEventId  String?
-  approvalEventId String?
-  executeEventId  String?
-  escrowTxId     String?
-  // Water settlement fields
-  buyerAccountId   String?
-  sellerAccountId  String?
-  waterAmount      Float?
-  pricePerLiter    Float?
-  totalPrice       Float?
-  paymentMethod    String?
-  transactionId    String?
-  // Common fields
-  status         String
-  createdAt      DateTime @default(now())
-  payouts        Payout[]
+  id                String           @id @default(cuid())
+  well              Well             @relation(fields: [wellId], references: [id], onDelete: Cascade)
+  wellId            String
+  periodStart       DateTime
+  periodEnd         DateTime
+  kwhTotal          Float
+  grossRevenue      Float
+  status            String // DRAFT | REQUESTED | APPROVED | EXECUTED | FAILED | REJECTED | CANCELLED
+  requestEventId    String?
+  approveEventId    String?
+  executeEventId    String?
+  escrowTxId        String?
+  rejectionReason   String?
+  cancellationReason String?
+  createdAt         DateTime         @default(now())
+  payouts           Payout[]
+
+  @@index([wellId, status, createdAt])
 }
 
 model WaterQuality {
@@ -128,15 +335,15 @@ model WaterQuality {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  well     Well     @relation(fields: [wellId], references: [id])
-  hcsEvent HcsEvent? @relation(fields: [hcsEventId], references: [id])
+  well     Well     @relation(fields: [wellId], references: [id], onDelete: Cascade)
+  hcsEvent HcsEvent? @relation(fields: [hcsEventId], references: [id], onDelete: SetNull)
 
   @@map("water_quality")
 }
 
 model Payout {
   id               String    @id @default(cuid())
-  settlement       Settlement @relation(fields: [settlementId], references: [id])
+  settlement       Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
   settlementId     String
   recipientAccount String
   assetType        String
@@ -152,40 +359,35 @@ model Payout {
 model Token {
   id              String    @id @default(cuid())
   well            Well      @relation(fields: [wellId], references: [id])
-  wellId          String
-  tokenId         String    @unique
-  type            String
-  name            String
-  symbol          String
+  wellId          String    @unique
+  tokenId         String
+  type              String // HTS_FT | HTS_NFT
   treasuryAccount String
   decimals        Int
   createdAt       DateTime  @default(now())
 }
 
 model Anchor {
-  id          String   @id @default(cuid())
-  sourceType  String
+  id          String     @id @default(cuid())
+  sourceType        String // DOCUMENT | SETTLEMENT | METER_READING
   sourceId    String
-  hcsEvent    HcsEvent @relation(fields: [hcsEventId], references: [id])
-  hcsEventId  String
+  hcsEvent    HcsEvent?  @relation(fields: [hcsEventId], references: [id])
+  hcsEventId  String?
   digestAlgo  String
   digestHex   String
-  createdAt   DateTime @default(now())
+  cid         String?
+  hfsFileId   String?
+  createdAt   DateTime   @default(now())
 }
 
 model Idempotency {
-  id           String   @id @default(cuid())
-  key          String   // UUIDv4 from Idempotency-Key header or messageId from body
-  scope        String   // API endpoint scope (route pathname)
-  status       String   // "PENDING", "SUCCEEDED", "FAILED"
-  requestHash  String?  // SHA256 hash of the request body for conflict detection
-  resultHash   String?  // SHA256 hash of the JSON result for SUCCEEDED operations
-  result       String?  // Stored response data for idempotent returns
-  createdAt    DateTime @default(now())
-
-  @@unique([key, scope])
-  @@index([key])
-  @@index([createdAt])
+  id          String   @id @default(cuid())
+  key         String   @unique
+  scope       String
+  status      String
+  resultJson  String?
+  resultHash  String?
+  createdAt   DateTime @default(now())
 }
 
 model MirrorCursor {

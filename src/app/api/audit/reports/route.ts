@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuditReport } from '@/lib/db/queries';
 import { stringify } from 'csv-stringify/sync';
+import { requireUser, assertRole, createUnauthorizedResponse, createForbiddenResponse, AuthenticationError, AuthorizationError } from '@/lib/auth/roles';
 
 export async function GET(request: NextRequest) {
   try {
+    // Require ADMIN role for audit reports
+    const user = await requireUser(request);
+    assertRole(user, 'ADMIN');
+    
     const searchParams = request.nextUrl.searchParams;
     const wellId = searchParams.get('wellId');
     const from = searchParams.get('from');
@@ -130,6 +135,15 @@ export async function GET(request: NextRequest) {
     }
   } catch (error) {
     console.error('Error fetching audit report:', error);
+    
+    if (error instanceof AuthenticationError) {
+      return createUnauthorizedResponse();
+    }
+    
+    if (error instanceof AuthorizationError) {
+      return createForbiddenResponse();
+    }
+    
     return NextResponse.json({ error: 'Failed to fetch audit report' }, { status: 500 });
   }
 }

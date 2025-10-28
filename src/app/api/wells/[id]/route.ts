@@ -1,6 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { z } from 'zod';
+import { requireUser, assertRole, createUnauthorizedResponse, createForbiddenResponse, AuthenticationError, AuthorizationError } from '@/lib/auth/roles';
+import { isValidTopicId } from '@/lib/hedera/ids';
+
+// Helper: try decode URL-safe Base64 string to UTF-8, return null if invalid
+function decodeMaybeBase64(input: string): string | null {
+  try {
+    // Normalize URL-safe base64
+    const normalized = input.replace(/-/g, '+').replace(/_/g, '/');
+    // Add padding if missing
+    const pad = normalized.length % 4;
+    const padded = pad ? normalized + '='.repeat(4 - pad) : normalized;
+    const decoded = Buffer.from(padded, 'base64').toString('utf-8');
+    // Basic sanity check: only printable ASCII
+    if (/^[\x20-\x7E]+$/.test(decoded)) {
+      return decoded.trim();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 const updateWellSchema = z.object({
   code: z.string().min(1, 'Well code is required').optional(),
@@ -22,67 +43,56 @@ export async function GET(
   { params }: RouteParams
 ) {
   try {
-    const well = await prisma.well.findUnique({
-      where: { id: params.id },
-      include: {
-        operator: {
-          select: {
-            id: true,
-            name: true,
-            role: true
-          }
-        },
-        memberships: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                role: true
-              }
-            }
-          }
-        },
-        events: {
-          take: 10,
-          orderBy: {
-            createdAt: 'desc'
-          }
-        },
-        settlements: {
-          take: 5,
-          orderBy: {
-            createdAt: 'desc'
-          },
-          include: {
-            payouts: true
-          }
-        },
-        tokens: {
-          orderBy: {
-            createdAt: 'desc'
-          }
-        },
-        _count: {
-          select: {
-            events: true,
-            settlements: true,
-            memberships: true
-          }
-        }
+    console.log('[API] GET /api/wells/[id] param:', params.id)
+    // Common include config reused for all lookups
+    const include = {
+      operator: {
+        select: { id: true, name: true }
       }
+    } as const;
+
+    // 1) Try by primary ID
+    let well = await prisma.well.findUnique({
+      where: { id: params.id },
+      include
     });
+    console.log('[API] findUnique by id ->', !!well)
+
+    // 2) Fallbacks: by code, or decoded base64 id/code
+    if (!well) {
+      const decoded = decodeMaybeBase64(params.id);
+      console.log('[API] decoded base64 ->', decoded)
+
+      // Try by code directly
+      well = await prisma.well.findFirst({
+        where: { code: params.id },
+        include
+      });
+      console.log('[API] findFirst by code ->', !!well)
+
+      // If still not found, try decoded variants
+      if (!well && decoded) {
+        well = await prisma.well.findUnique({ where: { id: decoded }, include })
+          ?? await prisma.well.findFirst({ where: { code: decoded }, include });
+        console.log('[API] find by decoded ->', !!well)
+      }
+    }
 
     if (!well) {
+      console.warn('[API] Well not found for id:', params.id)
       return NextResponse.json(
         { error: 'Well not found' },
         { status: 404 }
       );
     }
 
+    console.log('[API] Well found:', well.id)
     return NextResponse.json(well);
   } catch (error) {
-    console.error('Error fetching well:', error);
+    console.error('[API] Error fetching well:', error instanceof Error ? error.message : error)
+    if (error instanceof Error && (error as any).stack) {
+      console.error('[API] Stack:', (error as any).stack)
+    }
     return NextResponse.json(
       { error: 'Failed to fetch well' },
       { status: 500 }
@@ -95,8 +105,23 @@ export async function PUT(
   { params }: RouteParams
 ) {
   try {
+    // Require OPERATOR or ADMIN role
+    const user = await requireUser(request as NextRequest);
+    assertRole(user, 'OPERATOR', 'ADMIN');
+    
     const body = await request.json();
     const validatedData = updateWellSchema.parse(body);
+
+    // Validate topicId format if provided
+    if (validatedData.topicId && !isValidTopicId(validatedData.topicId)) {
+      return NextResponse.json(
+        {
+          error: 'invalid_topic_id',
+          details: [`Invalid topicId format: ${validatedData.topicId}. Expected format: x.y.z (e.g., 0.0.123)`]
+        },
+        { status: 400 }
+      );
+    }
 
     // Check if well exists
     const existingWell = await prisma.well.findUnique({
@@ -156,6 +181,14 @@ export async function PUT(
 
     return NextResponse.json(updatedWell);
   } catch (error) {
+    if (error instanceof AuthenticationError) {
+      return createUnauthorizedResponse();
+    }
+    
+    if (error instanceof AuthorizationError) {
+      return createForbiddenResponse();
+    }
+    
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: 'Validation failed', details: error.errors },
@@ -176,6 +209,10 @@ export async function DELETE(
   { params }: RouteParams
 ) {
   try {
+    // Require ADMIN role for deletion
+    const user = await requireUser(request as NextRequest);
+    assertRole(user, 'ADMIN');
+    
     // Check if well exists
     const existingWell = await prisma.well.findUnique({
       where: { id: params.id },
@@ -225,6 +262,14 @@ export async function DELETE(
       { status: 200 }
     );
   } catch (error) {
+    if (error instanceof AuthenticationError) {
+      return createUnauthorizedResponse();
+    }
+    
+    if (error instanceof AuthorizationError) {
+      return createForbiddenResponse();
+    }
+    
     console.error('Error deleting well:', error);
     return NextResponse.json(
       { error: 'Failed to delete well' },

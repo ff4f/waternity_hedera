@@ -56,7 +56,8 @@ export async function getHcsEvents({
   limit?: number;
   offset?: number;
 }) {
-  const where: any = {};
+  type HcsEventWhere = { wellId?: string; type?: string };
+  const where: HcsEventWhere = {};
   if (wellId) where.wellId = wellId;
   if (type) where.type = type;
 

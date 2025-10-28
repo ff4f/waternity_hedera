@@ -1,100 +1,185 @@
+import { NextRequest, NextResponse } from 'next/server';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
-import { AuthUser, Role } from '../types';
+import { prisma } from '../prisma';
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'your-secret-key-change-in-production'
-);
+const SESSION_COOKIE_NAME = 'wty_sess';
+const SESSION_DURATION = 8 * 60 * 60 * 1000; // 8 hours in milliseconds
 
-const COOKIE_NAME = 'wty_sess';
-const COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
-  maxAge: 8 * 60 * 60, // 8 hours
-  path: '/',
-};
-
-export async function signToken(payload: Omit<AuthUser, 'iat' | 'exp'>): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  
-  return await new SignJWT({
-    sub: payload.sub,
-    name: payload.name,
-    role: payload.role,
-  })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt(now)
-    .setExpirationTime(now + COOKIE_OPTIONS.maxAge)
-    .sign(JWT_SECRET);
+interface SessionPayload {
+  userId: string;
+  email: string;
+  iat: number;
+  exp: number;
 }
 
-export async function verifyToken(token: string): Promise<AuthUser | null> {
+function getSecretKey(): Uint8Array {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    throw new Error('SESSION_SECRET environment variable is required');
+  }
+  return new TextEncoder().encode(secret);
+}
+
+export async function createSession(userId: string, email: string): Promise<string> {
+  const payload: Omit<SessionPayload, 'iat' | 'exp'> = {
+    userId,
+    email,
+  };
+
+  const token = await new SignJWT(payload)
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(Math.floor((Date.now() + SESSION_DURATION) / 1000))
+    .sign(getSecretKey());
+
+  return token;
+}
+
+export async function verifySession(token: string): Promise<SessionPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-    
+    const { payload } = await jwtVerify(token, getSecretKey());
     return {
-      sub: payload.sub as string,
-      name: payload.name as string,
-      role: payload.role as Role,
+      userId: payload.userId as string,
+      email: payload.email as string,
       iat: payload.iat as number,
       exp: payload.exp as number,
     };
   } catch (error) {
-    console.error('JWT verification failed:', error);
     return null;
   }
 }
 
-export async function setSessionCookie(response: NextResponse, user: Omit<AuthUser, 'iat' | 'exp'>): Promise<void> {
-  const token = await signToken(user);
-  
-  response.cookies.set(COOKIE_NAME, token, COOKIE_OPTIONS);
-}
-
-export function clearSessionCookie(response: NextResponse): void {
-  response.cookies.set(COOKIE_NAME, '', {
-    ...COOKIE_OPTIONS,
-    maxAge: 0,
+export function setSessionCookie(response: NextResponse, token: string): void {
+  response.cookies.set(SESSION_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: SESSION_DURATION / 1000, // Convert to seconds
+    path: '/',
   });
 }
 
-export async function getSessionFromCookie(): Promise<AuthUser | null> {
+export function clearSessionCookie(response: NextResponse): void {
+  response.cookies.set(SESSION_COOKIE_NAME, '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 0,
+    path: '/',
+  });
+}
+
+export function getSessionToken(request: NextRequest): string | null {
+  return request.cookies.get(SESSION_COOKIE_NAME)?.value || null;
+}
+
+export async function getSessionTokenFromHeaders(): Promise<string | null> {
   const cookieStore = cookies();
-  const token = cookieStore.get(COOKIE_NAME)?.value;
+  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME);
+  return sessionCookie?.value || null;
+}
+
+export async function getUserFromRequest(request: NextRequest) {
+  const token = getSessionToken(request);
+  console.log('Token from NextRequest:', token);
+  
+  if (!token) {
+    console.log('No token found in NextRequest');
+    return null;
+  }
+
+  const session = await verifySession(token);
+  console.log('Session from NextRequest:', session);
+  
+  if (!session) {
+    console.log('Invalid session from NextRequest');
+    return null;
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: session.userId },
+      include: {
+        role: true,
+      },
+    });
+
+    console.log('User from NextRequest:', user?.email);
+    return user;
+  } catch (error) {
+    console.error('Error fetching user from session:', error);
+    return null;
+  }
+}
+
+export async function getUserFromHeaders() {
+  const token = await getSessionTokenFromHeaders();
+  if (!token) {
+    return null;
+  }
+
+  const session = await verifySession(token);
+  if (!session) {
+    return null;
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: session.userId },
+      include: {
+        role: true,
+      },
+    });
+
+    return user;
+  } catch (error) {
+    console.error('Error fetching user from session:', error);
+    return null;
+  }
+}
+
+export async function getUserFromStandardRequest(request: Request) {
+  // Parse cookies from the Cookie header
+  const cookieHeader = request.headers.get('cookie');
+  
+  if (!cookieHeader) {
+    return null;
+  }
+
+  // Extract session token from cookies
+  const cookies = cookieHeader.split(';').map(c => c.trim());
+  const sessionCookie = cookies.find(c => c.startsWith(`${SESSION_COOKIE_NAME}=`));
+  
+  if (!sessionCookie) {
+    return null;
+  }
+
+  const token = sessionCookie.split('=')[1];
   
   if (!token) {
     return null;
   }
-  
-  return await verifyToken(token);
-}
 
-export async function getSessionFromRequest(request: NextRequest): Promise<AuthUser | null> {
-  const token = request.cookies.get(COOKIE_NAME)?.value;
+  const session = await verifySession(token);
   
-  if (!token) {
+  if (!session) {
     return null;
   }
-  
-  return await verifyToken(token);
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: session.userId },
+      include: {
+        role: true,
+      },
+    });
+
+    return user;
+  } catch (error) {
+    console.error('Error fetching user from session:', error);
+    return null;
+  }
 }
 
-export function createUnauthorizedResponse(message: string = 'Unauthorized'): NextResponse {
-  return NextResponse.json(
-    { error: 'unauthorized', message },
-    { status: 401 }
-  );
-}
-
-export function createForbiddenResponse(needRole?: Role): NextResponse {
-  return NextResponse.json(
-    { 
-      error: 'forbidden', 
-      message: 'Insufficient permissions',
-      ...(needRole && { needRole })
-    },
-    { status: 403 }
-  );
-}
+export type { SessionPayload };
