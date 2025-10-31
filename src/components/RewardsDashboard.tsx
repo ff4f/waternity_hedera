@@ -49,6 +49,16 @@ export default function RewardsDashboard() {
   const { leaderboard } = useLeaderboard('all_time', 10);
   const { stats } = useUserStats(userId);
 
+  // Level configuration map used in the Levels tab
+  type LevelInfo = { title: string; icon: string; color: string; minPoints: number };
+  const LEVEL_CONFIG: Record<number, LevelInfo> = {
+    1: { title: 'Water Droplet', icon: '💧', color: '#3B82F6', minPoints: 0 },
+    2: { title: 'Stream Guardian', icon: '🌊', color: '#06B6D4', minPoints: 1000 },
+    3: { title: 'River Keeper', icon: '🏞️', color: '#10B981', minPoints: 5000 },
+    4: { title: 'Lake Protector', icon: '🏔️', color: '#8B5CF6', minPoints: 15000 },
+    5: { title: 'Ocean Champion', icon: '🌊', color: '#F59E0B', minPoints: 40000 }
+  };
+
   const [activeTab, setActiveTab] = useState('overview');
   const [activityForm, setActivityForm] = useState({
     activityType: 'water_saving' as ConservationActivity['activityType'],
@@ -502,13 +512,7 @@ export default function RewardsDashboard() {
             <CardContent>
               <div className="space-y-6">
                 {[1, 2, 3, 4, 5].map((level) => {
-                  const levelData = {
-                    1: { title: 'Water Droplet', icon: '💧', color: '#3B82F6', minPoints: 0 },
-                    2: { title: 'Stream Guardian', icon: '🌊', color: '#06B6D4', minPoints: 1000 },
-                    3: { title: 'River Keeper', icon: '🏞️', color: '#10B981', minPoints: 5000 },
-                    4: { title: 'Lake Protector', icon: '🏔️', color: '#8B5CF6', minPoints: 15000 },
-                    5: { title: 'Ocean Champion', icon: '🌊', color: '#F59E0B', minPoints: 40000 }
-                  }[level as keyof typeof levelData] || { title: '', icon: '', color: '', minPoints: 0 };
+                  const levelInfo = LEVEL_CONFIG[level] || { title: '', icon: '', color: '', minPoints: 0 };
 
                   const isCurrentLevel = userLevel?.level === level;
                   const isUnlocked = (userLevel?.level || 0) >= level;
@@ -523,13 +527,13 @@ export default function RewardsDashboard() {
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-4">
-                          <div className="text-3xl">{levelData.icon}</div>
+                          <div className="text-3xl">{levelInfo.icon}</div>
                           <div>
-                            <h4 className="font-bold" style={{ color: levelData.color }}>
-                              Level {level}: {levelData.title}
+                            <h4 className="font-bold" style={{ color: levelInfo.color }}>
+                              Level {level}: {levelInfo.title}
                             </h4>
                             <p className="text-sm text-muted-foreground">
-                              {levelData.minPoints.toLocaleString()}+ points required
+                              {levelInfo.minPoints.toLocaleString()}+ points required
                             </p>
                           </div>
                         </div>
