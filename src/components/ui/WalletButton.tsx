@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useWalletContext, useWalletConnection, useWalletBalance } from '../../lib/wallet-context';
-import Button from './Button';
+import { Button } from '@/components/ui/button';
 import Icon from '../AppIcon';
 
 interface WalletButtonProps {
@@ -22,7 +22,13 @@ const WalletButton: React.FC<WalletButtonProps> = ({
   showDisconnect = true,
   className = '',
 }) => {
+  // Map shadcn button size: our 'md' corresponds to shadcn's 'default'
+  const mappedSize: 'default' | 'sm' | 'lg' | 'icon' = size === 'md' ? 'default' : size;
   const { wallet } = useWalletContext();
+  // Normalize and type the tokens locally to avoid `never[]` inference from the JS context default
+  const tokenList: Array<{ tokenId?: string; balance?: number | string }> = Array.isArray(wallet.tokens)
+    ? (wallet.tokens as Array<{ tokenId?: string; balance?: number | string }>)
+    : [];
   const { connect, disconnect, loading } = useWalletConnection();
   const { balance, refreshBalance } = useWalletBalance();
 
@@ -74,17 +80,16 @@ const WalletButton: React.FC<WalletButtonProps> = ({
   };
 
   // If wallet is not connected, show connect button
-  if (!wallet.isConnected) {
+  // Use the correct property from wallet context (connected)
+  if (!wallet.connected) {
     return (
       <div className={`relative ${className}`}>
         <Button
           variant={variant}
-          size={size}
-          fullWidth={fullWidth}
-          loading={loading}
+          size={mappedSize}
           onClick={handleConnect}
           disabled={loading}
-          className="flex items-center gap-2"
+          className={`${fullWidth ? 'w-full' : ''} flex items-center gap-2`}
         >
           <Icon name="Wallet" className="w-4 h-4" />
           {loading ? 'Connecting...' : 'Connect Wallet'}
@@ -110,7 +115,7 @@ const WalletButton: React.FC<WalletButtonProps> = ({
     <div className={`relative ${className}`}>
       <Button
         variant={variant}
-        size={size}
+        size={mappedSize}
         onClick={() => setShowDropdown(!showDropdown)}
         className={`justify-between flex items-center ${fullWidth ? 'w-full' : ''}`}
       >
@@ -171,17 +176,17 @@ const WalletButton: React.FC<WalletButtonProps> = ({
             </p>
           </div>
 
-          {wallet.tokens && wallet.tokens.length > 0 && (
+          {tokenList && tokenList.length > 0 && (
             <div className="p-4 border-b border-gray-100">
               <h4 className="text-sm font-medium text-gray-700 mb-2">Token Holdings</h4>
               <div className="space-y-2 max-h-32 overflow-y-auto">
-                {wallet.tokens.map((token, index) => (
+                {tokenList.map((token, index) => (
                   <div key={index} className="flex justify-between items-center text-sm">
                     <span className="text-gray-600 font-mono text-xs">
-                      {token.tokenId || 'Unknown Token'}
+                      {token?.tokenId || 'Unknown Token'}
                     </span>
                     <span className="font-medium">
-                      {token.balance || '0'}
+                      {token?.balance ?? '0'}
                     </span>
                   </div>
                 ))}

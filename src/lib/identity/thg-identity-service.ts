@@ -129,7 +129,8 @@ export class THGIdentityService {
     const credentialId = `water-quality-${wellId}-${Date.now()}`;
     const issuanceDate = new Date().toISOString();
     
-    const credential: WaterQualityCredential = {
+    // Build credential without JWS to avoid self-referential initialization
+    const credentialWithoutJws: WaterQualityCredential = {
       id: credentialId,
       type: 'WaterQualityCredential',
       issuer: this.operatorId.toString(),
@@ -150,8 +151,14 @@ export class THGIdentityService {
         created: issuanceDate,
         verificationMethod: `${this.operatorId}#key-1`,
         proofPurpose: 'assertionMethod',
-        jws: await this.signCredential(credential)
+        jws: ''
       }
+    };
+
+    const signedJwsWq = await this.signCredential(credentialWithoutJws);
+    const credential: WaterQualityCredential = {
+      ...credentialWithoutJws,
+      proof: { ...credentialWithoutJws.proof, jws: signedJwsWq }
     };
 
     await this.storeCredentialOnHCS(credential);
@@ -174,7 +181,7 @@ export class THGIdentityService {
     // Calculate impact score based on water saved
     const impactScore = Math.min(100, Math.floor(waterSaved / 10));
     
-    const credential: ConservationCredential = {
+    const credentialWithoutJws: ConservationCredential = {
       id: credentialId,
       type: 'ConservationCredential',
       issuer: this.operatorId.toString(),
@@ -194,8 +201,14 @@ export class THGIdentityService {
         created: issuanceDate,
         verificationMethod: `${this.operatorId}#key-1`,
         proofPurpose: 'assertionMethod',
-        jws: await this.signCredential(credential)
+        jws: ''
       }
+    };
+
+    const signedJwsCons = await this.signCredential(credentialWithoutJws);
+    const credential: ConservationCredential = {
+      ...credentialWithoutJws,
+      proof: { ...credentialWithoutJws.proof, jws: signedJwsCons }
     };
 
     await this.storeCredentialOnHCS(credential);
@@ -216,7 +229,7 @@ export class THGIdentityService {
     const issuanceDate = new Date().toISOString();
     const validUntil = new Date(Date.now() + validityMonths * 30 * 24 * 60 * 60 * 1000).toISOString();
     
-    const credential: WellOperatorCredential = {
+    const credentialWithoutJws: WellOperatorCredential = {
       id: credentialId,
       type: 'WellOperatorCredential',
       issuer: this.operatorId.toString(),
@@ -237,8 +250,14 @@ export class THGIdentityService {
         created: issuanceDate,
         verificationMethod: `${this.operatorId}#key-1`,
         proofPurpose: 'assertionMethod',
-        jws: await this.signCredential(credential)
+        jws: ''
       }
+    };
+
+    const signedJwsOp = await this.signCredential(credentialWithoutJws);
+    const credential: WellOperatorCredential = {
+      ...credentialWithoutJws,
+      proof: { ...credentialWithoutJws.proof, jws: signedJwsOp }
     };
 
     await this.storeCredentialOnHCS(credential);

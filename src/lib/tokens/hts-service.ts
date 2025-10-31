@@ -14,12 +14,6 @@ import {
   AccountId,
   PrivateKey,
   Hbar,
-  TokenSupplyKey,
-  TokenAdminKey,
-  TokenFreezeKey,
-  TokenWipeKey,
-  TokenPauseKey,
-  TokenKycKey,
   Status
 } from '@hashgraph/sdk';
 
@@ -182,7 +176,7 @@ class HTSService {
         symbol: tokenInfo.symbol,
         decimals: tokenInfo.decimals,
         totalSupply: tokenInfo.totalSupply.toString(),
-        treasuryAccountId: tokenInfo.treasuryAccountId.toString(),
+        treasuryAccountId: tokenInfo.treasuryAccountId?.toString() || '',
         adminKey: tokenInfo.adminKey?.toString(),
         supplyKey: tokenInfo.supplyKey?.toString(),
         freezeKey: tokenInfo.freezeKey?.toString(),
@@ -321,16 +315,20 @@ class HTSService {
       const tokenBalances: TokenBalance[] = [];
       
       if (balance.tokens) {
-        for (const [tokenId, tokenBalance] of balance.tokens.entries()) {
+        // Access underlying Map to avoid iterator downlevel issues
+        const internal = balance.tokens as unknown as { _map?: Map<string, any> };
+        const pairs: Array<[string, any]> = [];
+        internal._map?.forEach((val: any, key: string) => pairs.push([key, val]));
+        for (const [tokenKey, tokenBalance] of pairs) {
           try {
-            const tokenInfo = await this.getTokenInfo(tokenId.toString());
+            const tokenInfo = await this.getTokenInfo(tokenKey);
             tokenBalances.push({
-              tokenId: tokenId.toString(),
+              tokenId: tokenKey,
               balance: tokenBalance.toString(),
               decimals: tokenInfo.decimals
             });
           } catch (error) {
-            console.warn(`Could not get info for token ${tokenId}:`, error);
+            console.warn(`Could not get info for token ${tokenKey}:`, error);
           }
         }
       }
