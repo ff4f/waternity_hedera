@@ -1,19 +1,22 @@
 'use client';
 
-import { useWallet } from '@/components/contexts/wallet-context';
+import { useWalletConnection, useWalletBalance } from '@/lib/wallet-context';
 import { Wallet, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 
 export default function WalletButton() {
-  const { 
-    isConnected, 
-    accountId, 
-    balance, 
-    isConnecting, 
-    error, 
-    connect, 
+  const {
+    isConnected,
+    accountId,
+    error,
+    connect,
     disconnect,
-    refreshBalance 
-  } = useWallet();
+    loading,
+  } = useWalletConnection();
+  // Explicitly type values from JS context to satisfy TypeScript
+  const { balance: rawBalance, refreshBalance } = (useWalletBalance() as {
+    balance: number | null;
+    refreshBalance: () => Promise<void> | void;
+  });
 
   const handleConnect = async () => {
     try {
@@ -49,9 +52,9 @@ export default function WalletButton() {
             <span className="text-sm font-medium text-green-800">
               {accountId.slice(0, 8)}...{accountId.slice(-6)}
             </span>
-            {balance !== null && (
+            {typeof rawBalance === 'number' && (
               <span className="text-xs text-green-600">
-                {balance.toFixed(2)} HBAR
+                {rawBalance.toFixed(2)} HBAR
               </span>
             )}
           </div>
@@ -76,15 +79,15 @@ export default function WalletButton() {
   return (
     <button
       onClick={handleConnect}
-      disabled={isConnecting}
+      disabled={loading}
       className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
     >
-      {isConnecting ? (
+      {loading ? (
         <Loader2 className="w-4 h-4 animate-spin" />
       ) : (
         <Wallet className="w-4 h-4" />
       )}
-      <span>{isConnecting ? 'Connecting...' : 'Connect Wallet'}</span>
+      <span>{loading ? 'Connecting...' : 'Connect Wallet'}</span>
     </button>
   );
 }
