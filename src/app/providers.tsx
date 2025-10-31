@@ -16,7 +16,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <UserProvider>
-        <WalletProvider>
+        {/* WalletProvider expects an `initial` prop; pass an empty default to satisfy the type */}
+        <WalletProvider initial={{}}>
           {children}
         </WalletProvider>
       </UserProvider>

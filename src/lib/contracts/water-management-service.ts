@@ -79,7 +79,7 @@ export interface ContractStats {
 
 export class WaterManagementService {
   private contract?: ethers.Contract;
-  private provider?: ethers.JsonRpcProvider;
+  private provider?: ethers.providers.JsonRpcProvider;
   private signer?: ethers.Wallet;
   private mockMode: boolean;
 
@@ -93,7 +93,7 @@ export class WaterManagementService {
       try {
         // Initialize Hedera client for read operations
         const client = createHederaClient();
-        this.provider = new ethers.JsonRpcProvider(process.env.HEDERA_JSON_RPC_URL || 'https://testnet.hashio.io/api');
+        this.provider = new ethers.providers.JsonRpcProvider(process.env.HEDERA_JSON_RPC_URL || 'https://testnet.hashio.io/api');
         this.contract = new ethers.Contract(contractAddress, WATER_MANAGEMENT_ABI, this.provider) as ethers.Contract;
         
         // Initialize signer for write operations (server-side only)
@@ -286,8 +286,8 @@ export class WaterManagementService {
     try {
       const tx = await this.contract.registerWell(
         location,
-        ethers.parseUnits(capacity.toString(), 0),
-        ethers.parseUnits(pricePerLiter.toString(), 18)
+        ethers.utils.parseUnits(capacity.toString(), 0),
+        ethers.utils.parseUnits(pricePerLiter.toString(), 18)
       );
       await tx.wait();
       return tx.hash;
@@ -316,7 +316,7 @@ export class WaterManagementService {
       const tx = await this.contract.allocateWater(
         wellId,
         userAddress,
-        ethers.parseUnits(amount.toString(), 0),
+        ethers.utils.parseUnits(amount.toString(), 0),
         duration
       );
       await tx.wait();
@@ -343,7 +343,7 @@ export class WaterManagementService {
     }
 
     try {
-      const tx = await this.contract.recordWaterUsage(wellId, userAddress, ethers.parseUnits(amount.toString(), 0));
+      const tx = await this.contract.recordWaterUsage(wellId, userAddress, ethers.utils.parseUnits(amount.toString(), 0));
       await tx.wait();
       return tx.hash;
     } catch (error) {
@@ -400,7 +400,7 @@ export class WaterManagementService {
     try {
       const tx = await this.contract.recordConservation(
         userAddress,
-        ethers.parseUnits(waterSaved.toString(), 0),
+        ethers.utils.parseUnits(waterSaved.toString(), 0),
         reason
       );
       await tx.wait();
@@ -413,11 +413,11 @@ export class WaterManagementService {
 
   // Utility functions
   formatWaterAmount(amount: bigint): string {
-    return ethers.formatUnits(amount, 0) + ' L';
+    return ethers.utils.formatUnits(amount, 0) + ' L';
   }
 
   formatPrice(price: bigint): string {
-    return ethers.formatUnits(price, 18) + ' HBAR';
+    return ethers.utils.formatUnits(price, 18) + ' HBAR';
   }
 
   formatTimestamp(timestamp: bigint): Date {

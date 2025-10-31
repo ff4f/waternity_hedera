@@ -1,4 +1,4 @@
-import { HTSService } from '@/lib/tokens/hts-service';
+import HTSService from '@/lib/tokens/hts-service';
 import { WaterManagementService } from '@/lib/contracts/water-management-service';
 
 export interface ConservationActivity {
