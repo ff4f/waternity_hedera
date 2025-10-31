@@ -1,3 +1,5 @@
+"use client";
+
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { AccountId, AccountBalanceQuery } from '@hashgraph/sdk';
 import { initializeHashConnect, connectToHashPack, getSigner } from '@/lib/wallet/connect';
